@@ -1,12 +1,16 @@
-/* ===========================================
-   Inpinity Token – Frontend (Phantom-first)
-   Pfad: /pages/token/app.js
-   =========================================== */
+/* =======================================================================
+   FILE: pages/token/app.js
+   Desc: Frontend (Phantom-first) + RPC-Fallback (incl. Helius)
+   ======================================================================= */
 
 /* ==================== KONFIG ==================== */
 const CFG = {
   // Wird ggf. dynamisch via ./app-cfg.json überschrieben
   RPC: "https://api.mainnet-beta.solana.com",
+
+  // *** zusätzlicher Client-Fallback (HELIUS) ***
+  // Hinweis: Key stammt aus deiner Nachricht – wenn möglich, lieber über Worker liefern.
+  HELIUS_URL_FALLBACK: "https://rpc.helius.xyz/?api-key=d95932bb-5385-4d84-ad18-7fc66e014d58",
 
   INPI_MINT: "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1",
   USDC_MINT: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -140,7 +144,7 @@ async function loadPublicAppCfg(){
       if (Number.isFinite(v) && v>0) CFG.TGE_TS_FALLBACK = v;
     }
 
-    // Airdrop-Bonus (BUGFIX: korrektes Feld lesen)
+    // Airdrop-Bonus
     if (c?.AIRDROP_BONUS_BPS !== undefined) {
       const v = Number(c.AIRDROP_BONUS_BPS);
       if (Number.isFinite(v) && v>=0) CFG.AIRDROP_BONUS_BPS_FALLBACK = v;
@@ -307,6 +311,35 @@ function updateIntentAvailability(){
   }
 }
 
+/* ==================== RPC: Fallback-Connect ==================== */
+async function ping(conn, ms=5000){
+  const to = new Promise(res => setTimeout(()=>res(false), ms));
+  const call = conn.getLatestBlockhash().then(()=>true).catch(()=>false);
+  return Promise.race([to, call]);
+}
+async function connectWithFallback(){
+  const candidates = Array.from(new Set([
+    STATE.rpc_url || null,
+    CFG.RPC || null,
+    CFG.HELIUS_URL_FALLBACK || null
+  ].filter(Boolean)));
+
+  for (const url of candidates){
+    try{
+      const c = new Connection(url, "confirmed");
+      const ok = await ping(c, 5000);
+      if (!ok) throw new Error("RPC no response");
+      connection = c; currentRpcUrl = url;
+      console.log("[RPC] connected:", url);
+      return true;
+    }catch(e){
+      console.warn("[RPC] failed:", url, e?.message||e);
+    }
+  }
+  console.error("[RPC] no candidate reachable");
+  return false;
+}
+
 /* ==================== INIT ==================== */
 async function init(){
   await loadPublicAppCfg();
@@ -319,11 +352,8 @@ async function init(){
 
   await refreshStatus();
 
-  if (!STATE.rpc_url) STATE.rpc_url = CFG.RPC;
-  if (!connection || currentRpcUrl !== STATE.rpc_url){
-    connection = new Connection(STATE.rpc_url, "confirmed");
-    currentRpcUrl=STATE.rpc_url;
-  }
+  // Verbindung mit Fallbacks aufbauen
+  await connectWithFallback();
 
   updatePriceRow(); updateIntentAvailability();
 
@@ -713,17 +743,17 @@ async function confirmEarlyFee(){
   }catch(e){ console.error(e); alert(e?.message||e); if (earlyMsg) earlyMsg.textContent="Fehler bei der Bestätigung."; }
 }
 
-/* ---------- Base58 (encode)  — BUGFIX: Schleifenabbruch ---------- */
+/* ---------- Base58 (encode)  ---------- */
 const B58_ALPH = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 function bs58Encode(bytes){
   if (!(bytes&&bytes.length)) return "";
   let zeros=0; while(zeros<bytes.length && bytes[zeros]===0) zeros++;
   let n=0n; for (const b of bytes) n = (n<<8n) + BigInt(b);
-  let out=""; 
-  while(n>0n){ 
-    const rem=Number(n%58n); 
-    out = B58_ALPH[rem]+out; 
-    n = n/58n;                  // <<<< wichtig (fix)
+  let out="";
+  while(n>0n){
+    const rem=Number(n%58n);
+    out = B58_ALPH[rem]+out;
+    n = n/58n;
   }
   for (let i=0;i<zeros;i++) out="1"+out;
   return out || "1".repeat(zeros);
@@ -731,3 +761,66 @@ function bs58Encode(bytes){
 
 /* ---------- Boot ---------- */
 window.addEventListener("DOMContentLoaded", ()=>{ init().catch(console.error); });
+
+
+/* =======================================================================
+   FILE: worker/wrangler.toml
+   Desc: Worker-Konfig – Helius als Fallback (nicht Primary), Wildcard CORS
+   ======================================================================= */
+name = "inpinity-presale-worker"
+main = "src/index.ts"
+compatibility_date = "2025-08-25"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+# WICHTIG: Nur EIN Worker darf /token bedienen
+routes = [
+  # API
+  { pattern = "inpinity.online/api/token/*", zone_name = "inpinity.online" },
+  # Pages-Projekt unter /token mounten (inkl. Unterpfade)
+  { pattern = "inpinity.online/token*",      zone_name = "inpinity.online" }
+]
+
+kv_namespaces = [
+  { binding = "KV_PRESALE", id = "ac3b4c80ae9e4b77abcee11dab27f199" },
+  { binding = "KV_CLAIMS",  id = "86ad86beb528411dbe6df7a7558300cf" }
+]
+
+[vars]
+# Token / Accounts
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+INPI_MINT = "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1"
+CREATOR   = "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7UUtfHrCp"
+USDC_VAULT_ATA = "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6"
+
+# Presale / Pricing
+PRESALE_STATE = "open"
+PRESALE_PRICE_USDC = "0.00031415"
+PUBLIC_PRICE_USDC  = "0.00034999"
+DISCOUNT_BPS       = "1000"     # 10%
+
+# Caps / Bonus / NFT-Gate
+PRESALE_MIN_USDC   = "10"
+PRESALE_MAX_USDC   = "1000"
+AIRDROP_BONUS_BPS  = "600"
+GATE_NFT_MINT      = "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ"
+
+# Early Claim
+EARLY_CLAIM_ENABLED = "true"
+EARLY_FLAT_USDC     = "1.0"
+
+# TGE (Unix Sekunden)
+TGE_TS = "1764003600"
+
+# CORS / Upstream
+# WILDCARD wird nun korrekt unterstützt (siehe 'cors()')
+ALLOWED_ORIGINS = "https://inpinity.online,https://inpi-token.pages.dev,https://*.inpi-token.pages.dev"
+
+# RPC Primary + Fallbacks
+SOLANA_RPC = "https://api.mainnet-beta.solana.com"
+HELIUS_API_KEY = "d95932bb-5385-4d84-ad18-7fc66e014d58"
+# Zusatz-Fallbacks kommasepariert (Helius wird automatisch ergänzt aus Key)
+SOLANA_RPC_FALLBACKS = "https://rpc.helius.xyz/?api-key=d95932bb-5385-4d84-ad18-7fc66e014d58"
+
+# Cloudflare Pages Projekt (Dev Domain / Preview ist ok)
+PAGES_UPSTREAM = "https://inpi-token.pages.dev"
