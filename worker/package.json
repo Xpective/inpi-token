@@ -1,0 +1,14 @@
+{
+    "name": "inpinity-presale-worker",
+    "version": "1.0.0",
+    "type": "module",
+    "private": true,
+    "scripts": {
+      "dev": "wrangler dev src/index.ts --local --test-scheduled",
+      "publish": "wrangler publish"
+    },
+    "devDependencies": {
+      "wrangler": "3.80.0",
+      "typescript": "5.5.4"
+    }
+  }

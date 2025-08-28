@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>INPI Presale | Inpinity.online</title>
+  <meta name="description" content="INPI Presale mit Phantom. USDC-Deposit, Early-Claim und Status-Check." />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header>
+    <h1>INPI Presale</h1>
+    <button id="btnConnect">Phantom verbinden</button>
+    <span id="walletAddr"></span>
+  </header>
+
+  <section id="configBox">
+    <h2>Konfiguration</h2>
+    <pre id="configJson">lädt…</pre>
+  </section>
+
+  <section id="presaleBox">
+    <h2>Presale</h2>
+    <label>USDC Betrag:</label>
+    <input id="amount" type="number" min="0" step="0.000001" value="10" />
+    <div class="row">
+      <button id="btnPayWallet">Mit Wallet zahlen</button>
+      <button id="btnPayQR">QR erzeugen</button>
+    </div>
+    <div id="qrBox" class="qr"></div>
+
+    <div class="row">
+      <label>Ref:</label>
+      <input id="ref" type="text" readonly />
+      <button id="btnCheck">Status prüfen</button>
+      <span id="status"></span>
+    </div>
+  </section>
+
+  <section id="earlyBox">
+    <h2>Early Claim</h2>
+    <button id="btnEarly">Early-Claim starten (1 USDC)</button>
+    <div id="qrEarly" class="qr"></div>
+  </section>
+
+  <footer>
+    <small>USDC Mint: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v — INPI Mint: GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1</small>
+  </footer>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

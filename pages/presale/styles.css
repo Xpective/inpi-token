@@ -1,0 +1,10 @@
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
+header { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; }
+h1, h2 { margin: 8px 0; }
+section { border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin: 12px 0; }
+.row { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+pre { background: #fafafa; padding: 8px; border-radius: 6px; max-height: 220px; overflow: auto; }
+.qr img, .qr canvas { width: 220px; height: 220px; }
+button { padding: 8px 12px; cursor: pointer; }
+input[type="number"], input[type="text"] { padding: 6px 8px; min-width: 220px; }
+#walletAddr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
