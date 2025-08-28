@@ -1,7 +1,4 @@
-/* =======================================================================
-   FILE: worker/wrangler.toml
-   Desc: Worker-Konfig – Helius als Fallback (nicht Primary), Wildcard CORS
-   ======================================================================= */
+
 name = "inpinity-presale-worker"
 main = "src/index.ts"
 compatibility_date = "2025-08-25"
