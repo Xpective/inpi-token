@@ -1,3 +1,8 @@
+/* =======================================================================
+   FILE: worker/src/index.ts
+   Desc: Worker – API + /token Pages-Proxy + RPC failover (incl. Helius)
+   ======================================================================= */
+
 /// <reference types="@cloudflare/workers-types" />
 
 export interface Env {
@@ -25,25 +30,55 @@ export interface Env {
   GATE_NFT_MINT?: string;
 
   SOLANA_RPC: string;
+  SOLANA_RPC_FALLBACKS?: string;   // Komma-separiert
+  HELIUS_API_KEY?: string;         // optional, generiert zusätzlichen Fallback
+
   ALLOWED_ORIGINS: string;
   PAGES_UPSTREAM: string; // z.B. https://inpi-token.pages.dev (oder Preview)
 }
 
 /* ---------------- helpers ---------------- */
+const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
+
 const json = (obj: unknown, status = 200, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(obj), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra }
+    headers: { ...JSON_HEADERS, "cache-control": "no-store", ...extra }
   });
 
+/* ---- CORS mit Wildcards (z.B. https://*.inpi-token.pages.dev) ---- */
+function originMatches(origin: string, pattern: string): boolean {
+  if (pattern === "*") return true;
+  try {
+    const u = new URL(origin);
+    const p = new URL(pattern.replace("*.", "TEMPSTAR.")); // Dummy für Schema/Host
+    // Gleiche Schemes erzwingen
+    if (u.protocol !== p.protocol) return false;
+    const hostPat = pattern.split("://")[1] || pattern;
+    if (hostPat.startsWith("*.")) {
+      const suffix = hostPat.slice(1); // ".inpi-token.pages.dev"
+      return u.hostname.endsWith(suffix);
+    }
+    return u.hostname === p.hostname;
+  } catch { return false; }
+}
 const cors = (env: Env) => {
-  const origins = (env.ALLOWED_ORIGINS || "*").split(",").map(s=>s.trim()).filter(Boolean);
-  return (origin?: string) => ({
-    "access-control-allow-origin": origin && origins.includes(origin) ? origin : (origins[0] || "*"),
-    "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type",
-    "access-control-max-age": "86400"
-  });
+  const patterns = (env.ALLOWED_ORIGINS || "*")
+    .split(",")
+    .map(s=>s.trim())
+    .filter(Boolean);
+  return (origin?: string) => {
+    if (!origin || patterns.includes("*")) {
+      return { "access-control-allow-origin": "*", "access-control-allow-methods": "GET,POST,OPTIONS", "access-control-allow-headers": "content-type", "access-control-max-age": "86400" };
+    }
+    const ok = patterns.some(p => originMatches(origin, p));
+    return {
+      "access-control-allow-origin": ok ? origin : patterns[0] || "*",
+      "access-control-allow-methods": "GET,POST,OPTIONS",
+      "access-control-allow-headers": "content-type",
+      "access-control-max-age": "86400"
+    };
+  };
 };
 
 function randomRef(): string {
@@ -61,16 +96,42 @@ function solanaPay(recipient: string, amount: number, usdcMint: string, memo: st
   return u.toString();
 }
 
-async function rpcReq(env: Env, method: string, params: unknown[]) {
-  const r = await fetch(env.SOLANA_RPC, {
+/* ---- RPC mit Failover (env.SOLANA_RPC → SOLANA_RPC_FALLBACKS → Helius/Key) ---- */
+function rpcCandidates(env: Env): string[] {
+  const list: string[] = [];
+  if (env.SOLANA_RPC) list.push(env.SOLANA_RPC);
+  if (env.SOLANA_RPC_FALLBACKS) {
+    for (const u of env.SOLANA_RPC_FALLBACKS.split(",").map(s=>s.trim()).filter(Boolean)) list.push(u);
+  }
+  if (env.HELIUS_API_KEY) list.push(`https://rpc.helius.xyz/?api-key=${env.HELIUS_API_KEY}`);
+  // zum Schluss noch public RPC
+  list.push("https://api.mainnet-beta.solana.com");
+  // Deduplizieren, Reihenfolge beibehalten
+  return Array.from(new Set(list));
+}
+async function rpcTry(url: string, method: string, params: unknown[]) {
+  const r = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: JSON_HEADERS as any,
     body: JSON.stringify({ jsonrpc:"2.0", id:1, method, params })
   });
   const t = await r.text();
-  let j: any; try { j = JSON.parse(t); } catch { throw new Error(`RPC parse error: ${t}`); }
-  if (!r.ok || j?.error) throw new Error(j?.error ? `${j.error.code}: ${j.error.message}` : `HTTP ${r.status}: ${t}`);
+  let j: any; try { j = JSON.parse(t); } catch {
+    throw new Error(`RPC parse error (${url}): ${t.slice(0,200)}`);
+  }
+  if (!r.ok || j?.error) {
+    throw new Error(j?.error ? `${j.error.code}: ${j.error.message}` : `HTTP ${r.status}: ${t.slice(0,200)}`);
+  }
   return j.result;
+}
+async function rpcReq(env: Env, method: string, params: unknown[]) {
+  const candidates = rpcCandidates(env);
+  let lastErr: any = null;
+  for (const url of candidates){
+    try { return await rpcTry(url, method, params); }
+    catch (e){ lastErr = e; }
+  }
+  throw lastErr || new Error("All RPC candidates failed");
 }
 
 async function getTokenUiAmount(env: Env, owner: string, mint: string): Promise<number> {
@@ -90,9 +151,29 @@ async function hasNft(env: Env, owner: string, mint?: string): Promise<boolean> 
   return (await getTokenUiAmount(env, owner, mint)) > 0;
 }
 
-/* ------------- Proxy: /token → Pages (Dual-Pfad-Fallback) ------------- */
+/* ------------- Proxy: /token → Pages (Dual-Pfad + MIME-Schutz) ------------- */
 const STATIC_RE = /\.(?:js|css|json|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|map)(?:\?.*)?$/i;
-
+const MIME_BY_EXT: Record<string,string> = {
+  ".js":  "application/javascript; charset=utf-8",
+  ".mjs": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json":"application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg":"image/jpeg",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".webp":"image/webp",
+  ".ico": "image/x-icon",
+  ".ttf": "font/ttf",
+  ".woff":"font/woff",
+  ".woff2":"font/woff2"
+};
+function extname(path: string){
+  const m = path.match(/(\.[a-z0-9]+)(?:\?.*)?$/i);
+  return m ? m[1].toLowerCase() : "";
+}
 function isStatic(path: string){ return STATIC_RE.test(path); }
 
 async function fetchUpstream(url: string, req: Request) {
@@ -103,49 +184,53 @@ async function fetchUpstream(url: string, req: Request) {
     redirect: "manual"
   });
 }
+async function chooseStatic(env: Env, req: Request, origPath: string, search: string): Promise<Response> {
+  // Kandidaten: keep (/token/..) und strip (/..)
+  const keep = origPath;
+  const strip = origPath.replace(/^\/token(?=\/|$)/, "") || "/";
+  const candidates = [keep, strip];
+  for (let i=0;i<candidates.length;i++){
+    const target = new URL(candidates[i] + search, env.PAGES_UPSTREAM);
+    const r = await fetchUpstream(target.toString(), req);
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    const ext = extname(candidates[i]);
+
+    // HTML? Dann ist es vermutlich der SPA-Fallback → weiter probieren
+    if (ct.includes("text/html")) {
+      if (i < candidates.length-1) continue;
+      // letzte Chance: wenn Body tatsächlich kein HTML (falsch getaggter MIME)
+      const buf = await r.arrayBuffer();
+      const textStart = new TextDecoder().decode(new Uint8Array(buf).slice(0, 32)).trim();
+      const looksHtml = textStart.startsWith("<");
+      if (looksHtml) return r; // echtes HTML → zurückgeben
+      const h = new Headers(r.headers);
+      h.set("content-type", MIME_BY_EXT[ext] || "application/octet-stream");
+      h.set("cache-control", "public, max-age=600");
+      return new Response(buf, { status: r.status, headers: h });
+    }
+
+    // Nicht-HTML: sauberen MIME setzen (falls CDN Mist liefert)
+    const h = new Headers(r.headers);
+    h.set("content-type", MIME_BY_EXT[ext] || h.get("content-type") || "application/octet-stream");
+    h.set("cache-control", "public, max-age=600");
+    return new Response(r.body, { status: r.status, headers: h });
+  }
+  // sollte nie hier landen
+  return new Response("Not found", { status:404 });
+}
 
 async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
   // /token → /token/ (damit relative Pfade in HTML stimmen)
   if (url.pathname === "/token" && req.method === "GET")
     return Response.redirect(url.origin + "/token/", 301);
 
-  const upstream = new URL(env.PAGES_UPSTREAM);
-  const upstreamOrigin = upstream.origin;
-
-  // Kandidatenpfade:
-  const keep = url.pathname;                                   // /token/...
-  const strip = url.pathname.replace(/^\/token(?=\/|$)/, "") || "/"; // ohne /token
-
-  // Für statische Assets: versuche beide Pfade, nimm den ersten, der NICHT HTML liefert
+  // Statische Assets immer streng behandeln
   if (isStatic(url.pathname)) {
-    const candidates = [keep, strip];
-    for (let i=0;i<candidates.length;i++){
-      const target = new URL(candidates[i] + url.search, env.PAGES_UPSTREAM);
-      const r = await fetchUpstream(target.toString(), req);
-      const ct = (r.headers.get("content-type") || "").toLowerCase();
-      if (r.ok && !ct.includes("text/html")) {
-        const h = new Headers(r.headers);
-        if (STATIC_RE.test(candidates[i])) h.set("cache-control", "public, max-age=600");
-        return new Response(r.body, { status: r.status, headers: h });
-      }
-      // bei Redirect: auf /token/... zurückbiegen
-      if (r.status>=300 && r.status<400) {
-        const loc = r.headers.get("location");
-        if (loc && loc.startsWith("/")) {
-          const h = new Headers(r.headers);
-          h.set("location", "/token" + (loc.startsWith("/token") ? loc.slice(6) : loc));
-          return new Response(null, { status: r.status, headers: h });
-        }
-      }
-      // Wenn erster Versuch HTML/Spa-Fallback war → weiter mit zweitem Kandidaten
-      if (i === candidates.length-1) {
-        return r; // nichts Besseres gefunden
-      }
-    }
+    return chooseStatic(env, req, url.pathname, url.search);
   }
 
-  // Für HTML/sonstige: nimm "keep" zuerst; Redirects umbiegen; HTML umschreiben
-  const target = new URL(keep + url.search, env.PAGES_UPSTREAM);
+  // HTML/sonstige: keep-Pfad + Umschreiben
+  const target = new URL(url.pathname + url.search, env.PAGES_UPSTREAM);
   let r = await fetchUpstream(target.toString(), req);
 
   if (r.status>=300 && r.status<400) {
@@ -164,10 +249,6 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
   if (ct.includes("text/html")) {
     let html = await r.text();
 
-    // Upstream-Origin entfernen, damit root-absolute Pfade sichtbar sind
-    const esc = upstreamOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    html = html.replace(new RegExp(esc, "g"), "");
-
     // Root-absolute → /token/… (wenn nicht schon /token/)
     html = html
       .replace(/(href|src|action)=["']\/(?!token\/)/g, '$1="/token/')
@@ -183,12 +264,10 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
     return new Response(html, { status: r.status, headers: h });
   }
 
-  // Statische sonstige Dateien (ohne Extension-Heuristik)
+  // Non-HTML (selten) → liefern
   if (r.ok) {
-    if (isStatic(keep)) h.set("cache-control", "public, max-age=600");
     return new Response(r.body, { status: r.status, headers: h });
   }
-
   return r;
 }
 
@@ -209,6 +288,7 @@ export default {
       const presale = parseFloat(env.PRESALE_PRICE_USDC || "0");
       const discount_bps = parseInt(env.DISCOUNT_BPS || "1000", 10);
       return json({
+        // Wichtig: gib Primary aus; Fallbacks handled Frontend + Worker intern
         rpc_url: env.SOLANA_RPC,
         inpi_mint: env.INPI_MINT,
         usdc_mint: env.USDC_MINT,
@@ -355,8 +435,16 @@ export default {
     // ---- API: generic RPC proxy
     if (url.pathname.endsWith("/api/token/rpc") && req.method === "POST") {
       const body = await req.text();
-      const r = await fetch(env.SOLANA_RPC, { method:"POST", headers:{ "content-type":"application/json" }, body });
-      return new Response(await r.text(), { status: r.status, headers: { "content-type":"application/json", ...corsHeaders } });
+      // Versuche alle Kandidaten nacheinander
+      const candidates = rpcCandidates(env);
+      for (let i=0;i<candidates.length;i++){
+        try{
+          const r = await fetch(candidates[i], { method:"POST", headers: JSON_HEADERS as any, body });
+          const text = await r.text();
+          return new Response(text, { status: r.status, headers: { ...JSON_HEADERS, ...corsHeaders } });
+        }catch{/* try next */}
+      }
+      return json({ error:"All RPC candidates failed" }, 500, corsHeaders);
     }
 
     return json({ error:"not found" }, 404, corsHeaders);
