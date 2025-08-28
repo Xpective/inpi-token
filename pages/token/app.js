@@ -6,7 +6,7 @@
 /* ==================== KONFIG ==================== */
 const CFG = {
   // Wird ggf. dynamisch via ./app-cfg.json überschrieben
-  RPC: "https://api.mainnet-beta.solana.com",
+
 
   INPI_MINT: "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1",
   USDC_MINT: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
