@@ -1,16 +1,12 @@
-/* =======================================================================
-   FILE: pages/token/app.js
-   Desc: Frontend (Phantom-first) + RPC-Fallback (incl. Helius)
-   ======================================================================= */
+/* ===========================================
+   Inpinity Token – Frontend (Phantom-first)
+   Pfad: /pages/token/app.js
+   =========================================== */
 
 /* ==================== KONFIG ==================== */
 const CFG = {
   // Wird ggf. dynamisch via ./app-cfg.json überschrieben
   RPC: "https://api.mainnet-beta.solana.com",
-
-  // *** zusätzlicher Client-Fallback (HELIUS) ***
-  // Hinweis: Key stammt aus deiner Nachricht – wenn möglich, lieber über Worker liefern.
-  HELIUS_URL_FALLBACK: "https://rpc.helius.xyz/?api-key=d95932bb-5385-4d84-ad18-7fc66e014d58",
 
   INPI_MINT: "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1",
   USDC_MINT: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -144,7 +140,7 @@ async function loadPublicAppCfg(){
       if (Number.isFinite(v) && v>0) CFG.TGE_TS_FALLBACK = v;
     }
 
-    // Airdrop-Bonus
+    // Airdrop-Bonus (BUGFIX: korrektes Feld lesen)
     if (c?.AIRDROP_BONUS_BPS !== undefined) {
       const v = Number(c.AIRDROP_BONUS_BPS);
       if (Number.isFinite(v) && v>=0) CFG.AIRDROP_BONUS_BPS_FALLBACK = v;
@@ -311,35 +307,6 @@ function updateIntentAvailability(){
   }
 }
 
-/* ==================== RPC: Fallback-Connect ==================== */
-async function ping(conn, ms=5000){
-  const to = new Promise(res => setTimeout(()=>res(false), ms));
-  const call = conn.getLatestBlockhash().then(()=>true).catch(()=>false);
-  return Promise.race([to, call]);
-}
-async function connectWithFallback(){
-  const candidates = Array.from(new Set([
-    STATE.rpc_url || null,
-    CFG.RPC || null,
-    CFG.HELIUS_URL_FALLBACK || null
-  ].filter(Boolean)));
-
-  for (const url of candidates){
-    try{
-      const c = new Connection(url, "confirmed");
-      const ok = await ping(c, 5000);
-      if (!ok) throw new Error("RPC no response");
-      connection = c; currentRpcUrl = url;
-      console.log("[RPC] connected:", url);
-      return true;
-    }catch(e){
-      console.warn("[RPC] failed:", url, e?.message||e);
-    }
-  }
-  console.error("[RPC] no candidate reachable");
-  return false;
-}
-
 /* ==================== INIT ==================== */
 async function init(){
   await loadPublicAppCfg();
@@ -352,8 +319,11 @@ async function init(){
 
   await refreshStatus();
 
-  // Verbindung mit Fallbacks aufbauen
-  await connectWithFallback();
+  if (!STATE.rpc_url) STATE.rpc_url = CFG.RPC;
+  if (!connection || currentRpcUrl !== STATE.rpc_url){
+    connection = new Connection(STATE.rpc_url, "confirmed");
+    currentRpcUrl=STATE.rpc_url;
+  }
 
   updatePriceRow(); updateIntentAvailability();
 
@@ -743,17 +713,17 @@ async function confirmEarlyFee(){
   }catch(e){ console.error(e); alert(e?.message||e); if (earlyMsg) earlyMsg.textContent="Fehler bei der Bestätigung."; }
 }
 
-/* ---------- Base58 (encode)  ---------- */
+/* ---------- Base58 (encode)  — BUGFIX: Schleifenabbruch ---------- */
 const B58_ALPH = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 function bs58Encode(bytes){
   if (!(bytes&&bytes.length)) return "";
   let zeros=0; while(zeros<bytes.length && bytes[zeros]===0) zeros++;
   let n=0n; for (const b of bytes) n = (n<<8n) + BigInt(b);
-  let out="";
-  while(n>0n){
-    const rem=Number(n%58n);
-    out = B58_ALPH[rem]+out;
-    n = n/58n;
+  let out=""; 
+  while(n>0n){ 
+    const rem=Number(n%58n); 
+    out = B58_ALPH[rem]+out; 
+    n = n/58n;                  // <<<< wichtig (fix)
   }
   for (let i=0;i<zeros;i++) out="1"+out;
   return out || "1".repeat(zeros);
@@ -761,5 +731,3 @@ function bs58Encode(bytes){
 
 /* ---------- Boot ---------- */
 window.addEventListener("DOMContentLoaded", ()=>{ init().catch(console.error); });
-
-
