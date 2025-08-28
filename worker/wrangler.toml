@@ -1,15 +1,13 @@
+# wrangler.toml — DEV setup (CORS offen, RPC = Helius)
 
 name = "inpinity-presale-worker"
 main = "src/index.ts"
-compatibility_date = "2025-08-25"
+compatibility_date = "2025-08-28"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 
-# WICHTIG: Nur EIN Worker darf /token bedienen
 routes = [
-  # API
   { pattern = "inpinity.online/api/token/*", zone_name = "inpinity.online" },
-  # Pages-Projekt unter /token mounten (inkl. Unterpfade)
   { pattern = "inpinity.online/token*",      zone_name = "inpinity.online" }
 ]
 
@@ -19,40 +17,38 @@ kv_namespaces = [
 ]
 
 [vars]
-# Token / Accounts
-USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-INPI_MINT = "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1"
-CREATOR   = "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7UUtfHrCp"
+# --- Token / Accounts ---
+USDC_MINT      = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+INPI_MINT      = "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1"
+CREATOR        = "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7UUtfHrCp"
 USDC_VAULT_ATA = "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6"
 
-# Presale / Pricing
-PRESALE_STATE = "open"
-PRESALE_PRICE_USDC = "0.00031415"
-PUBLIC_PRICE_USDC  = "0.00034999"
-DISCOUNT_BPS       = "1000"     # 10%
+# --- Presale / Pricing ---
+PRESALE_STATE       = "open"
+PRESALE_PRICE_USDC  = "0.00031415"
+PUBLIC_PRICE_USDC   = "0.00034999"
+DISCOUNT_BPS        = "1000"        # 10%
 
-# Caps / Bonus / NFT-Gate
-PRESALE_MIN_USDC   = "10"
-PRESALE_MAX_USDC   = "1000"
-AIRDROP_BONUS_BPS  = "600"
-GATE_NFT_MINT      = "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ"
+# --- Caps / Bonus / NFT-Gate ---
+PRESALE_MIN_USDC    = "10"
+PRESALE_MAX_USDC    = "1000"
+AIRDROP_BONUS_BPS   = "600"
+GATE_NFT_MINT       = "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ"
 
-# Early Claim
+# --- Early Claim ---
 EARLY_CLAIM_ENABLED = "true"
 EARLY_FLAT_USDC     = "1.0"
 
-# TGE (Unix Sekunden)
+# --- TGE ---
 TGE_TS = "1764003600"
 
-# CORS / Upstream
-# WILDCARD wird nun korrekt unterstützt (siehe 'cors()')
-ALLOWED_ORIGINS = "https://inpinity.online,https://inpi-token.pages.dev,https://*.inpi-token.pages.dev"
+# --- CORS (DEV offen) ---
+# Für Public/Preview unbedingt '*' setzen, sonst knallt es bei pages.dev-Subdomains.
+ALLOWED_ORIGINS = "*"
 
-# RPC Primary + Fallbacks
-SOLANA_RPC = "https://api.mainnet-beta.solana.com"
-HELIUS_API_KEY = "d95932bb-5385-4d84-ad18-7fc66e014d58"
-# Zusatz-Fallbacks kommasepariert (Helius wird automatisch ergänzt aus Key)
-SOLANA_RPC_FALLBACKS = "https://rpc.helius.xyz/?api-key=d95932bb-5385-4d84-ad18-7fc66e014d58"
+# --- RPC ---
+# Stelle Primary auf Helius (entsperrt & stabil). Public RPC bleibt in der App als weiterer Fallback.
+SOLANA_RPC = "https://rpc.helius.xyz/?api-key=DEIN_HELIUS_KEY"
 
-# Cloudflare Pages Projekt (Dev Domain / Preview ist ok)
+# --- Cloudflare Pages Upstream (DEV/Preview-Domain) ---
 PAGES_UPSTREAM = "https://inpi-token.pages.dev"
