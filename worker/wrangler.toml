@@ -36,7 +36,7 @@ GATE_NFT_MINT = "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ"
 EARLY_CLAIM_ENABLED = "true"
 EARLY_FLAT_USDC = "1.0"
 
-TGE_TS = "1757932800"
+TGE_TS = "1764003600"
 
 ALLOWED_ORIGINS = "https://inpinity.online,https://inpi-token.pages.dev,https://*.inpi-token.pages.dev"
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
