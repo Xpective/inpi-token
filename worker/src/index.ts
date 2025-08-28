@@ -195,7 +195,10 @@ async function rpcReqAny(env: Env, method: string, params: unknown[]) {
   throw lastErr || new Error("No RPC available");
 }
 
-async function getTokenUiAmount(env: Env, owner: string, mint: string): Promise<number> {
+// --- nur der kritische Teil /api/token/wallet/balances ---
+
+async function getTokenUiAmount(env: Env, owner: string, mint?: string): Promise<number> {
+  if (!mint) return 0; // fehlendes ENV → niemals werfen
   try {
     const res = await rpcReqAny(env, "getParsedTokenAccountsByOwner",
       [owner, { mint }, { commitment: "confirmed" }]);
@@ -206,7 +209,40 @@ async function getTokenUiAmount(env: Env, owner: string, mint: string): Promise<
     }
     return total;
   } catch {
-    return 0; // UI soll weiterlaufen
+    return 0; // nie throwen
+  }
+}
+
+async function handleBalances(env: Env, url: URL, corsHeaders: Record<string,string>) {
+  const wallet = url.searchParams.get("wallet") || "";
+  if (!wallet) return JSON_OK({ error: "wallet required" }, 400, corsHeaders);
+
+  try {
+    // grobe Base58-Prüfung
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,60}$/.test(wallet)) {
+      return JSON_OK({ usdc:{uiAmount:0}, inpi:{uiAmount:0}, gate_ok:false, error:"invalid wallet" }, 200, corsHeaders);
+    }
+
+    const [usdc, inpi, gate] = await Promise.all([
+      getTokenUiAmount(env, wallet, env.USDC_MINT),
+      getTokenUiAmount(env, wallet, env.INPI_MINT),
+      // hat NFT → Rabatt: ebenfalls niemals werfen lassen
+      (async () => {
+        if (!env.GATE_NFT_MINT) return false;
+        try { return (await getTokenUiAmount(env, wallet, env.GATE_NFT_MINT)) > 0; }
+        catch { return false; }
+      })()
+    ]);
+
+    return JSON_OK({ usdc: { uiAmount: usdc }, inpi: { uiAmount: inpi }, gate_ok: !!gate }, 200, corsHeaders);
+  } catch (e: any) {
+    // WICHTIG: NIE 500 – immer 200 zurück, damit Frontend weitermachen kann.
+    return JSON_OK({
+      usdc:{ uiAmount: 0 },
+      inpi:{ uiAmount: 0 },
+      gate_ok:false,
+      server_error: String(e?.message || e)
+    }, 200, corsHeaders);
   }
 }
 

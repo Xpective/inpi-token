@@ -1,10 +1,7 @@
-# wrangler.toml — DEV setup (CORS offen, RPC = Helius)
-
 name = "inpinity-presale-worker"
 main = "src/index.ts"
 compatibility_date = "2025-08-28"
 compatibility_flags = ["nodejs_compat"]
-workers_dev = false
 
 routes = [
   { pattern = "inpinity.online/api/token/*", zone_name = "inpinity.online" },
@@ -17,38 +14,26 @@ kv_namespaces = [
 ]
 
 [vars]
-# --- Token / Accounts ---
-USDC_MINT      = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-INPI_MINT      = "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1"
-CREATOR        = "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7UUtfHrCp"
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+INPI_MINT = "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1"
+CREATOR   = "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7U..."        # vollständiger Pubkey!
 USDC_VAULT_ATA = "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6"
 
-# --- Presale / Pricing ---
-PRESALE_STATE       = "open"
-PRESALE_PRICE_USDC  = "0.00031415"
-PUBLIC_PRICE_USDC   = "0.00034999"
-DISCOUNT_BPS        = "1000"        # 10%
+PRESALE_STATE = "open"
+PRESALE_PRICE_USDC = "0.00031415"
+PUBLIC_PRICE_USDC  = "0.00034999"
 
-# --- Caps / Bonus / NFT-Gate ---
-PRESALE_MIN_USDC    = "10"
-PRESALE_MAX_USDC    = "1000"
-AIRDROP_BONUS_BPS   = "600"
-GATE_NFT_MINT       = "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ"
-
-# --- Early Claim ---
 EARLY_CLAIM_ENABLED = "true"
 EARLY_FLAT_USDC     = "1.0"
 
-# --- TGE ---
 TGE_TS = "1764003600"
+DISCOUNT_BPS   = "1000"
+GATE_NFT_MINT  = "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ"
 
-# --- CORS (DEV offen) ---
-# Für Public/Preview unbedingt '*' setzen, sonst knallt es bei pages.dev-Subdomains.
-ALLOWED_ORIGINS = "*"
+AIRDROP_BONUS_BPS = "600"
 
-# --- RPC ---
-# Stelle Primary auf Helius (entsperrt & stabil). Public RPC bleibt in der App als weiterer Fallback.
-SOLANA_RPC = "https://rpc.helius.xyz/?api-key=d95932bb-5385-4d84-ad18-7fc66e014d58",https://api.mainnet-beta.solana.com"
+# WICHTIG: mehrere RPCs als CSV (erst Helius, dann Public)
+SOLANA_RPC = "https://mainnet.helius-rpc.com/?api-key=DEIN_HELIUS_KEY,https://api.mainnet-beta.solana.com"
 
-# --- Cloudflare Pages Upstream (DEV/Preview-Domain) ---
+ALLOWED_ORIGINS = "https://inpinity.online,https://inpi-token.pages.dev,https://*.inpi-token.pages.dev"
 PAGES_UPSTREAM = "https://inpi-token.pages.dev"
