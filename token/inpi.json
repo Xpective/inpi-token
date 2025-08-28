@@ -1,13 +1,21 @@
 {
     "name": "Inpinity Token",
     "symbol": "INPI",
-    "mint": "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1",
-    "usdc_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    "creator": "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7UUtfHrCp",
-    "usdc_vault_ata": "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6",
+    
+    "RPC": "https://api.mainnet-beta.solana.com",
+    "API_BASE": "https://inpinity.online/api/token",
   
+    "INPI_MINT": "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1",
+    "USDC_MINT": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "creator": "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7UUtfHrCp",
+    "CREATOR_USDC_ATA": "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6",
+    
+    "DEPOSIT_OWNER": null,
+    "PRESALE_MIN_USDC": 1,
+    "PRESALE_MAX_USDC": 1000,
+    
     "presale_state": "open",
-    "tge_ts": 1757932800, 
+    "TGE_TS": 1757932800, 
     "presale_price_usdc": 0.00031415,
     "public_price_usdc": 0.00034999,
     "cap_per_wallet_usdc": 1000,
@@ -18,18 +26,21 @@
   
     "nft_gate_enabled": false,
     "gate_mint": "",
-    "gate_collection": "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ",
+    "GATE_NFT_MINT": "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ",
     "gate_discount_bps": 0,
+    "DISCOUNT_BPS": 1000,
+    
   
-    "supply_total": "3141592653",
-    "dist_bps": {
-      "presale": 1000,
-      "dex_liquidity": 1000,
-      "staking": 700,
-      "ecosystem": 3000,
-      "treasury": 3000,
-      "team": 1200,
-      "airdrop_nft": 100
+    "SUPPLY_TOTAL": "3141592653",
+    "DISTR_BPS": {
+    "presale": 1000,
+    "dist_dex_liquidity_bps": 2000,
+    "dist_staking_bps": 700,
+    "dist_ecosystem_bps": 2000,
+    "dist_treasury_bps": 1500,
+    "dist_team_bps": 1000,
+    "dist_airdrop_nft_bps": 1000,
+    "dist_buyback_reserve_bps": 800
     },
   
     "external_url": "https://inpinity.online/token",
