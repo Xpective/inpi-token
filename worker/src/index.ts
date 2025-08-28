@@ -1,5 +1,11 @@
+<<<<<<< HEAD
+/// <reference types="@cloudflare/workers-types" />
+
+// src/index.ts
+=======
 // src/index.ts
 
+>>>>>>> 27d51e1b7de161e535981d91246bc7c227847c57
 export interface Env {
   // KV
   KV_PRESALE: KVNamespace;
@@ -13,31 +19,35 @@ export interface Env {
 
   // Presale / Pricing
   PRESALE_STATE: string;      // "pre" | "open" | "closed"
-  PRESALE_PRICE_USDC: string; // z.B. "0.00031415"
+  PRESALE_PRICE_USDC: string; // "0.00031415"
   PUBLIC_PRICE_USDC: string;  // optional
-  DISCOUNT_BPS?: string;      // z.B. "1000" (=10%)
+  DISCOUNT_BPS?: string;      // "1000" (=10%)
 
   // Caps (optional)
-  PRESALE_MIN_USDC?: string;  // z.B. "10"
-  PRESALE_MAX_USDC?: string;  // z.B. "1000"
+  PRESALE_MIN_USDC?: string;  // "10"
+  PRESALE_MAX_USDC?: string;  // "1000"
 
   // Early Claim
   EARLY_CLAIM_ENABLED: string; // "true"/"false"
-  EARLY_FLAT_USDC: string;     // z.B. "1.0"
+  EARLY_FLAT_USDC: string;     // "1.0"
 
   // Misc
-  TGE_TS: string;               // Unix Sek
-  AIRDROP_BONUS_BPS?: string;   // z.B. "600" (=6.00%)
+  TGE_TS: string;               // Unix Sekunden
+  AIRDROP_BONUS_BPS?: string;   // "600" (=6.00%)
   GATE_NFT_MINT?: string;       // NFT-Mint für Rabattgate
 
   // Infra
+<<<<<<< HEAD
+  SOLANA_RPC: string;           // z.B. https://mainnet.helius-rpc.com/?api-key=...
+=======
   SOLANA_RPC: string;           // z.B. https://rpc.helius.xyz/?api-key=...
+>>>>>>> 27d51e1b7de161e535981d91246bc7c227847c57
   ALLOWED_ORIGINS: string;      // CSV: https://inpinity.online,https://inpi-token.pages.dev
   PAGES_UPSTREAM: string;       // https://inpi-token.pages.dev
 }
 
 /* ------------------------ helpers ------------------------ */
-const json = (obj: any, status = 200, extra: Record<string, string> = {}) =>
+const json = (obj: unknown, status = 200, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(obj), {
     status,
     headers: {
@@ -64,6 +74,17 @@ function randomRef(): string {
   return [...a].map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+<<<<<<< HEAD
+// QR-only: nur die solana: URI (keine App-Deep-Links)
+function solanaPay(
+  recipient: string,
+  amount: number,
+  usdcMint: string,
+  memo: string,
+  label = "INPI Presale",
+  message = "INPI Presale Deposit"
+): string {
+=======
 // QR-only: wir geben nur die solana: URI zurück – keine App-Deep-Links
 function solanaPay(
   recipient: string,
@@ -73,6 +94,7 @@ function solanaPay(
   label = "INPI Presale",
   message = "INPI Presale Deposit"
 ): string {
+>>>>>>> 27d51e1b7de161e535981d91246bc7c227847c57
   const u = new URL(`solana:${recipient}`);
   u.searchParams.set("amount", String(amount));
   u.searchParams.set("spl-token", usdcMint);
@@ -82,8 +104,12 @@ function solanaPay(
   return u.toString();
 }
 
+<<<<<<< HEAD
+async function rpcReq(env: Env, method: string, params: unknown[]) {
+=======
 async function rpcReq(env: Env, method: string, params: any[]) {
   // Standard JSON-RPC Call – mit defensiver Fehlerbehandlung
+>>>>>>> 27d51e1b7de161e535981d91246bc7c227847c57
   const r = await fetch(env.SOLANA_RPC, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -92,12 +118,19 @@ async function rpcReq(env: Env, method: string, params: any[]) {
   const t = await r.text();
   let j: any;
   try { j = JSON.parse(t); } catch { throw new Error(`RPC parse error: ${t}`); }
+<<<<<<< HEAD
+  if (!r.ok || j?.error) {
+    const err = j?.error ? `${j.error.code}: ${j.error.message}` : `HTTP ${r.status}: ${t}`;
+    throw new Error(err);
+  }
+=======
   if (!r.ok || j?.error) {
     const err = j?.error
       ? `${j.error.code}: ${j.error.message}`
       : `HTTP ${r.status}: ${t}`;
     throw new Error(err);
   }
+>>>>>>> 27d51e1b7de161e535981d91246bc7c227847c57
   return j.result;
 }
 
@@ -129,6 +162,15 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
   if (url.pathname === "/token" && req.method === "GET")
     return Response.redirect(url.origin + "/token/", 301);
 
+<<<<<<< HEAD
+  const upstreamOrigin = new URL(env.PAGES_UPSTREAM).origin;
+
+  // NICHT kürzen: Upstream liefert unter /token/* (deine Pages-Struktur)
+  const upstreamPath = url.pathname;
+  const target = new URL(upstreamPath + url.search, env.PAGES_UPSTREAM);
+
+  const r = await fetch(target.toString(), {
+=======
   const upstreamOrigin = new URL(env.PAGES_UPSTREAM).origin;
 
   // WICHTIG: NICHT /token entfernen – Upstream hat die Dateien unter /token/*
@@ -136,11 +178,28 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
   const target = new URL(upstreamPath + url.search, env.PAGES_UPSTREAM);
 
   const r = await fetch(target.toString(), {
+>>>>>>> 27d51e1b7de161e535981d91246bc7c227847c57
     method: req.method,
     headers: req.headers,
     body: ["GET","HEAD"].includes(req.method) ? undefined : await req.arrayBuffer(),
     redirect: "manual"
   });
+<<<<<<< HEAD
+
+  // Interne Redirects umbiegen
+  if (r.status >= 300 && r.status < 400) {
+    const loc = r.headers.get("location");
+    if (loc && loc.startsWith("/")) {
+      const h = new Headers(r.headers);
+      // auf /token/... biegen
+      h.set("location", "/token" + (loc.startsWith("/token") ? loc.slice(6) : loc));
+      return new Response(null, { status: r.status, headers: h });
+    }
+    return r;
+  }
+
+  const ct = r.headers.get("content-type") || "";
+=======
 
   // interne Redirects umbiegen
   if (r.status >= 300 && r.status < 400) {
@@ -154,12 +213,44 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
   }
 
   const ct = r.headers.get("content-type") || "";
+>>>>>>> 27d51e1b7de161e535981d91246bc7c227847c57
   const h = new Headers(r.headers);
+<<<<<<< HEAD
+
+  // Cache für statische Assets
+  if (r.ok && /\.(?:js|css|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|map|json)$/.test(upstreamPath)) {
+=======
 
   // Cache für Assets
   if (r.ok && /\.(?:js|css|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|map|json)$/.test(upstreamPath)) {
+>>>>>>> 27d51e1b7de161e535981d91246bc7c227847c57
     h.set("cache-control", "public, max-age=600");
   }
+<<<<<<< HEAD
+
+  if (ct.includes("text/html")) {
+    let html = await r.text();
+
+    // 1) Absolute Domain → entfernen, damit wir root-absolute erkennen
+    const esc = upstreamOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    html = html.replace(new RegExp(esc, "g"), "");
+
+    // 2) Root-absolute Pfade präfixen, wenn nicht schon /token/
+    html = html
+      .replace(/(href|src|action)=["']\/(?!token\/)/g, '$1="/token/')
+      .replace(/data-(href|src)=["']\/(?!token\/)/g, 'data-$1="/token/');
+
+    // 3) <base> setzen, falls fehlt
+    if (html.includes("<head") && !/base\s+href=/i.test(html)) {
+      html = html.replace("<head>", '<head><base href="/token/">');
+    }
+
+    h.set("content-type", "text/html; charset=utf-8");
+    h.delete("content-length");
+    return new Response(html, { status: r.status, headers: h });
+  }
+
+=======
 
   if (ct.includes("text/html")) {
     let html = await r.text();
@@ -184,6 +275,7 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
     return new Response(html, { status: r.status, headers: h });
   }
 
+>>>>>>> 27d51e1b7de161e535981d91246bc7c227847c57
   return new Response(r.body, { status: r.status, headers: h });
 }
 
@@ -193,8 +285,7 @@ export default {
     const url  = new URL(req.url);
     const corsHeaders = cors(env)(req.headers.get("origin") || undefined);
 
-    if (req.method === "OPTIONS")
-      return new Response(null, { headers: corsHeaders });
+    if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
     /* ---- Static unter /token ---- */
     if (url.pathname === "/token" || url.pathname.startsWith("/token/"))
@@ -255,12 +346,12 @@ export default {
           getTokenUiAmount(env, wallet, env.INPI_MINT),
           hasNft(env, wallet, env.GATE_NFT_MINT)
         ]);
-        return json({
-          usdc: { uiAmount: usdc },
-          inpi: { uiAmount: inpi },
-          gate_ok: !!gate
-        }, 200, corsHeaders);
+        return json({ usdc: { uiAmount: usdc }, inpi: { uiAmount: inpi }, gate_ok: !!gate }, 200, corsHeaders);
       } catch (e: any) {
+<<<<<<< HEAD
+        // Niemals 403/500 unkommentiert nach außen – UI soll weiterlaufen
+        return json({ usdc: { uiAmount: 0 }, inpi: { uiAmount: 0 }, gate_ok: false, error: String(e?.message || e) }, 200, corsHeaders);
+=======
         // Niemals 403/500 unkommentiert nach außen – UI soll weiterlaufen
         return json({
           usdc: { uiAmount: 0 },
@@ -268,6 +359,7 @@ export default {
           gate_ok: false,
           error: String(e?.message || e)
         }, 200, corsHeaders);
+>>>>>>> 27d51e1b7de161e535981d91246bc7c227847c57
       }
     }
 
