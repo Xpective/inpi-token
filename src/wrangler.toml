@@ -1,0 +1,12 @@
+name = "inpinity-worker"
+main = "src/worker.js"
+compatibility_date = "2024-10-01"
+
+# Route auf deine Domain
+routes = [
+  { pattern = "inpinity.online/*", zone_name = "inpinity.online" }
+]
+
+# Optional: falls du PAGES_UPSTREAM als Umgebungsvariable nutzen willst
+[vars]
+PAGES_UPSTREAM = "https://inpi-token.pages.dev"
