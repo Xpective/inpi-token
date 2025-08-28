@@ -34,7 +34,7 @@ export interface Env {
   // Infra
   SOLANA_RPC: string;           // z.B. https://mainnet.helius-rpc.com/?api-key=...
   ALLOWED_ORIGINS: string;      // CSV: https://inpinity.online,https://inpi-token.pages.dev
-  PAGES_UPSTREAM: string;       // https://inpi-token.pages.dev
+  PAGES_UPSTREAM: string;       // z.B. https://inpi-token.pages.dev  ODER Preview-URL
 }
 
 /* ------------------------ helpers ------------------------ */
@@ -110,8 +110,7 @@ async function getTokenUiAmount(env: Env, owner: string, mint: string): Promise<
     }
     return total;
   } catch {
-    // Bei RPC-Ausfall nicht hart fehlschlagen – UI zeigt dann 0
-    return 0;
+    return 0; // bei RPC-Ausfall: weich zurückfallen
   }
 }
 
@@ -121,91 +120,69 @@ async function hasNft(env: Env, owner: string, mint?: string): Promise<boolean> 
   return amt > 0;
 }
 
-/* ---------- /token Proxy mit HTML-Rewrite + Asset-Fallback ---------- */
+/* ---------- /token Proxy mit HTML-Rewrite ---------- */
 async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
-  // /token → /token/ (für relative Pfade im HTML)
+  // /token → /token/ (damit ./pfade im HTML funktionieren)
   if (url.pathname === "/token" && req.method === "GET")
     return Response.redirect(url.origin + "/token/", 301);
 
-  const isAsset = (p: string) =>
-    /\.(?:js|css|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|map|json)$/.test(p);
+  const upstreamOrigin = new URL(env.PAGES_UPSTREAM).origin;
 
-  // Wir probieren beide Varianten:
-  //  1) exakter Pfad (mit /token)
-  //  2) Root (ohne /token)
-  const pathVariants = [
-    url.pathname,                         // /token/...
-    url.pathname.replace(/^\/token/, ""), // /...
-  ];
+  // WICHTIG: Für den Upstream die /token-Präfixe ENTFERNEN.
+  // Auf Pages liegen die Dateien meist am Root (z.B. /app.js, /token/index.html etc. je nach Build),
+  // aber deine Requests an den Worker sind immer /token/… .
+  const upstreamPath = url.pathname.replace(/^\/token/, "") || "/"; // <- Kernfix
+  const target = new URL(upstreamPath + url.search, env.PAGES_UPSTREAM);
 
-  let lastErr: unknown = null;
+  const r = await fetch(target.toString(), {
+    method: req.method,
+    headers: req.headers,
+    body: ["GET","HEAD"].includes(req.method) ? undefined : await req.arrayBuffer(),
+    redirect: "manual"
+  });
 
-  for (const p of pathVariants) {
-    try {
-      const target = new URL(p + url.search, env.PAGES_UPSTREAM);
-      const r = await fetch(target.toString(), {
-        method: req.method,
-        headers: req.headers,
-        body: ["GET","HEAD"].includes(req.method) ? undefined : await req.arrayBuffer(),
-        redirect: "manual"
-      });
-
-      // Redirects so umbiegen, dass der Client unter /token/ bleibt
-      if (r.status >= 300 && r.status < 400) {
-        const loc = r.headers.get("location");
-        if (loc && loc.startsWith("/")) {
-          const h = new Headers(r.headers);
-          const newLoc = loc.startsWith("/token") ? loc : "/token" + loc;
-          h.set("location", newLoc);
-          return new Response(null, { status: r.status, headers: h });
-        }
-        return r;
-      }
-
-      const ct = r.headers.get("content-type") || "";
+  // Interne Redirects umbiegen (auf /token/ zurück)
+  if (r.status >= 300 && r.status < 400) {
+    const loc = r.headers.get("location");
+    if (loc && loc.startsWith("/")) {
       const h = new Headers(r.headers);
-
-      // Statische Assets: wenn Upstream HTML (SPA-Fallback) liefert → nächste Variante probieren
-      if (r.ok && isAsset(p)) {
-        if (ct.includes("text/html")) continue;
-        h.set("cache-control", "public, max-age=600");
-        return new Response(r.body, { status: r.status, headers: h });
-      }
-
-      // HTML: Umschreiben auf /token/
-      if (ct.includes("text/html")) {
-        let html = await r.text();
-
-        // 1) absolute Upstream-Domain raus, damit root-absolute erkannt werden
-        const upstreamOrigin = new URL(env.PAGES_UPSTREAM).origin;
-        const esc = upstreamOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        html = html.replace(new RegExp(esc, "g"), "");
-
-        // 2) root-absolute Pfade auf /token/ präfixen (wenn nicht schon /token/)
-        html = html
-          .replace(/(href|src|action)=["']\/(?!token\/)/g, '$1="/token/')
-          .replace(/data-(href|src)=["']\/(?!token\/)/g, 'data-$1="/token/');
-
-        // 3) <base href="/token/"> ergänzen, falls nicht vorhanden
-        if (html.includes("<head") && !/base\s+href=/i.test(html)) {
-          html = html.replace("<head>", '<head><base href="/token/">');
-        }
-
-        h.set("content-type", "text/html; charset=utf-8");
-        h.delete("content-length");
-        return new Response(html, { status: r.status, headers: h });
-      }
-
-      // alles andere durchreichen
-      return new Response(r.body, { status: r.status, headers: h });
-    } catch (e) {
-      lastErr = e;
-      continue;
+      h.set("location", "/token" + (loc.startsWith("/token") ? loc.slice(6) : loc));
+      return new Response(null, { status: r.status, headers: h });
     }
+    return r;
   }
 
-  // beide Varianten fehlgeschlagen
-  return new Response("Upstream not reachable", { status: 502 });
+  const ct = r.headers.get("content-type") || "";
+  const h = new Headers(r.headers);
+
+  // Leichtes Caching für statische Assets
+  if (r.ok && /\.(?:js|css|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|map|json)$/.test(upstreamPath)) {
+    h.set("cache-control", "public, max-age=600");
+  }
+
+  if (ct.includes("text/html")) {
+    let html = await r.text();
+
+    // Absolute Domain des Upstreams entfernen, damit wir root-absolute Pfade erkennen
+    const esc = upstreamOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    html = html.replace(new RegExp(esc, "g"), "");
+
+    // Root-absolute Pfade (/...) auf /token/... präfixen (nur wenn nicht schon /token/)
+    html = html
+      .replace(/(href|src|action)=["']\/(?!token\/)/g, '$1="/token/')
+      .replace(/data-(href|src)=["']\/(?!token\/)/g, 'data-$1="/token/');
+
+    // <base href="/token/"> injizieren, falls nicht vorhanden
+    if (html.includes("<head") && !/base\s+href=/i.test(html)) {
+      html = html.replace("<head>", '<head><base href="/token/">');
+    }
+
+    h.set("content-type", "text/html; charset=utf-8");
+    h.delete("content-length");
+    return new Response(html, { status: r.status, headers: h });
+  }
+
+  return new Response(r.body, { status: r.status, headers: h });
 }
 
 /* ------------------------ worker ------------------------ */
@@ -214,13 +191,14 @@ export default {
     const url  = new URL(req.url);
     const corsHeaders = cors(env)(req.headers.get("origin") || undefined);
 
-    if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+    if (req.method === "OPTIONS")
+      return new Response(null, { headers: corsHeaders });
 
     /* ---- Static unter /token ---- */
     if (url.pathname === "/token" || url.pathname.startsWith("/token/"))
       return proxyPages(env, req, url);
 
-    /* ---- API: status (für app.js refreshStatus) ---- */
+    /* ---- API: status ---- */
     if (url.pathname.endsWith("/api/token/status") && req.method === "GET") {
       const presale = parseFloat(env.PRESALE_PRICE_USDC || "0");
       const discount_bps = parseInt(env.DISCOUNT_BPS || "1000", 10);
@@ -264,7 +242,7 @@ export default {
       return json(body, 200, corsHeaders);
     }
 
-    /* ---- API: wallet/balances (für app.js refreshBalances) ---- */
+    /* ---- API: wallet/balances ---- */
     if (url.pathname.endsWith("/api/token/wallet/balances") && req.method === "GET") {
       const wallet = url.searchParams.get("wallet") || "";
       if (!wallet) return json({ error: "wallet required" }, 400, corsHeaders);
@@ -277,7 +255,6 @@ export default {
         ]);
         return json({ usdc: { uiAmount: usdc }, inpi: { uiAmount: inpi }, gate_ok: !!gate }, 200, corsHeaders);
       } catch (e: any) {
-        // Niemals 403/500 unkommentiert nach außen – UI soll weiterlaufen
         return json({ usdc: { uiAmount: 0 }, inpi: { uiAmount: 0 }, gate_ok: false, error: String(e?.message || e) }, 200, corsHeaders);
       }
     }
@@ -310,7 +287,7 @@ export default {
       return json({ ok:true, ref, memo, qr_contribute: { qr_url, solana_pay_url: payUrl } }, 200, corsHeaders);
     }
 
-    /* ---- API: presale/check (Memo-Suche am Vault-ATA) ---- */
+    /* ---- API: presale/check ---- */
     if (url.pathname.endsWith("/api/token/presale/check") && req.method === "GET") {
       const ref = url.searchParams.get("ref") || "";
       if (!ref) return json({ error:"ref required" }, 400, corsHeaders);
