@@ -24,10 +24,10 @@
     "early_claim_enabled": true,
     "early_flat_usdc": 1.0,
   
-    "nft_gate_enabled": false,
+    "nft_gate_enabled": true,
     "gate_mint": "",
     "GATE_NFT_MINT": "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ",
-    "gate_discount_bps": 0,
+    "gate_discount_bps": 1000,
     "DISCOUNT_BPS": 1000,
     
   
