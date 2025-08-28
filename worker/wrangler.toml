@@ -48,7 +48,7 @@ ALLOWED_ORIGINS = "*"
 
 # --- RPC ---
 # Stelle Primary auf Helius (entsperrt & stabil). Public RPC bleibt in der App als weiterer Fallback.
-SOLANA_RPC = "https://rpc.helius.xyz/?api-key=DEIN_HELIUS_KEY"
+SOLANA_RPC = "https://rpc.helius.xyz/?api-key=d95932bb-5385-4d84-ad18-7fc66e014d58"
 
 # --- Cloudflare Pages Upstream (DEV/Preview-Domain) ---
 PAGES_UPSTREAM = "https://inpi-token.pages.dev"
