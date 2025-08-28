@@ -63,6 +63,18 @@ function fmti(n){ if(n==null||isNaN(n))return "–"; return Number(n).toLocaleSt
 function solscan(addr){ return `https://solscan.io/account/${addr}`; }
 function nowSec(){ return Math.floor(Date.now()/1000); }
 
+/* ---------- QR & Universal Links ---------- */
+function makeQrUrl(data){
+  const d = encodeURIComponent(data);
+  return `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${d}`;
+}
+function phantomUL(solanaPayUrl){
+  return `https://phantom.app/ul/v1/solana-pay?link=${encodeURIComponent(solanaPayUrl)}`;
+}
+function solflareUL(solanaPayUrl){
+  return `https://solflare.com/ul/v1/solana-pay?link=${encodeURIComponent(solanaPayUrl)}`;
+}
+
 /* ---------- Web3 + Provider laden ---------- */
 function getPhantomProvider(){
   if (typeof window !== "undefined"){
@@ -141,9 +153,9 @@ async function loadPublicAppCfg(){
       if (Number.isFinite(v) && v>0) CFG.TGE_TS_FALLBACK = v;
     }
 
-    // Airdrop-Bonus
+    // Airdrop-Bonus (fix: richtige Property lesen)
     if (c?.AIRDROP_BONUS_BPS !== undefined) {
-      const v = Number(c.AIRDROP_BPS);
+      const v = Number(c.AIRDROP_BONUS_BPS);
       if (Number.isFinite(v) && v>=0) CFG.AIRDROP_BONUS_BPS_FALLBACK = v;
     }
 
@@ -662,21 +674,39 @@ if (btnPresaleIntent){
       const j = await r.json().catch(()=>null);
       if (!r.ok || !j?.ok) throw new Error(j?.error || j?.detail || "Intent fehlgeschlagen");
 
-      // QR + Deep-Links für die USDC-Zahlung
-      const contrib = j?.qr_contribute || {};
-      lastDeepLinks.contribute = contrib;
-      const qrUrl = contrib.qr_url || j?.qr_url || null;
+      // Solana-Pay Link vom Server (bevorzugt), sonst Fallback
+      const solanaPayUrl = j?.solana_pay_url || j?.url || null;
+      if (!solanaPayUrl) throw new Error("Kein Solana-Pay Link von der API erhalten.");
+
+      // QR + Universal Links
+      lastDeepLinks.contribute = {
+        solana_pay_url: solanaPayUrl,
+        phantom_universal_url: phantomUL(solanaPayUrl),
+        solflare_universal_url: solflareUL(solanaPayUrl)
+      };
 
       if (payArea) payArea.style.display="block";
-      if (qrContrib && qrUrl){ qrContrib.src = qrUrl; qrContrib.style.display="block"; }
-      if (aPhantom && contrib.phantom_universal_url){ aPhantom.href = contrib.phantom_universal_url; aPhantom.style.display="inline-block"; }
-      if (aSolflare && contrib.solflare_universal_url){ aSolflare.href = contrib.solflare_universal_url; aSolflare.style.display="inline-block"; }
+      if (qrContrib){ qrContrib.src = makeQrUrl(solanaPayUrl); qrContrib.style.display="block"; }
+      if (aPhantom){ aPhantom.href = lastDeepLinks.contribute.phantom_universal_url; aPhantom.style.display="inline-block"; }
+      if (aSolflare){ aSolflare.href = lastDeepLinks.contribute.solflare_universal_url; aSolflare.style.display="inline-block"; }
 
       if (intentMsg){
         intentMsg.textContent="";
         const p1=document.createElement("p"); p1.textContent=`✅ Intent registriert. Bitte ${usdc} USDC via QR/Link senden (SPL-USDC).`;
+        intentMsg.appendChild(p1);
+
+        const price = currentPriceUSDC();
+        if (Number.isFinite(price) && price>0){
+          const inpi = Math.floor(Number(usdc) / price);
+          const pInfo = document.createElement("p");
+          pInfo.className = "muted";
+          pInfo.textContent = `Enthält ~ ${inpi.toLocaleString("de-DE")} INPI @ ${price.toFixed(6)} USDC/INPI.`;
+          intentMsg.appendChild(pInfo);
+        }
+
         const p2=document.createElement("p"); p2.textContent=`Optional: Nutze unten den Early-Claim (1 USDC Fee) für sofortige Gutschrift.`;
-        intentMsg.appendChild(p1); intentMsg.appendChild(p2); setBonusNote();
+        intentMsg.appendChild(p2);
+        setBonusNote();
       }
 
       await refreshStatus();
@@ -700,15 +730,17 @@ async function startEarlyFlow(){
     const j = await r.json().catch(()=>null);
     if (!r.ok || !j?.ok) throw new Error(j?.error || "Early-Intent fehlgeschlagen");
 
-    const qrUrl = j.qr_url || null;
+    const solanaPayUrl = j?.solana_pay_url || j?.url || null;
+    if (!solanaPayUrl) throw new Error("Kein Solana-Pay Link für Claim erhalten.");
+
     lastDeepLinks.claimNow = {
-      solana_pay_url: j.solana_pay_url || null,
-      phantom_universal_url: j.solana_pay_url ? `https://phantom.app/ul/v1/solana-pay?link=${encodeURIComponent(j.solana_pay_url)}` : null,
-      solflare_universal_url: j.solana_pay_url ? `https://solflare.com/ul/v1/solana-pay?link=${encodeURIComponent(j.solana_pay_url)}` : null
+      solana_pay_url: solanaPayUrl,
+      phantom_universal_url: phantomUL(solanaPayUrl),
+      solflare_universal_url: solflareUL(solanaPayUrl)
     };
 
-    if (qrClaimNow && qrUrl) { qrClaimNow.src = qrUrl; qrClaimNow.style.display="block"; }
-    if (earlyMsg) earlyMsg.textContent = `Sende ${STATE.early.flat_usdc} USDC (QR oder Link). Danach unten die Transaktions-Signatur eintragen und bestätigen.`;
+    if (qrClaimNow){ qrClaimNow.src = makeQrUrl(solanaPayUrl); qrClaimNow.style.display="block"; }
+    if (earlyMsg) earlyMsg.textContent = `Sende ${STATE.early.flat_usdc} USDC (QR/Link). Danach unten die Transaktions-Signatur eintragen und bestätigen.`;
   }catch(e){ console.error(e); alert(e?.message||e); }
 }
 async function confirmEarlyFee(){
