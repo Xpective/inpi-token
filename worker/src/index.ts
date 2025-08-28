@@ -9,18 +9,18 @@ export interface Env {
   // Token / Accounts
   USDC_MINT: string;
   INPI_MINT: string;
-  CREATOR: string;            // Empfänger-Pubkey (Owner, der die USDC-ATA kontrolliert)
-  USDC_VAULT_ATA: string;     // USDC-ATA (Ziel)
+  CREATOR: string;            // Owner, empfängt Solana Pay; Wallet routed zu USDC ATA
+  USDC_VAULT_ATA: string;     // Ziel-ATA (für Memo-/Settlement-Check)
 
   // Presale / Pricing
   PRESALE_STATE: string;      // "pre" | "open" | "closed"
-  PRESALE_PRICE_USDC: string; // "0.00031415"
+  PRESALE_PRICE_USDC: string; // z.B. "0.00031415"
   PUBLIC_PRICE_USDC: string;  // optional
-  DISCOUNT_BPS?: string;      // "1000" (=10%)
+  DISCOUNT_BPS?: string;      // z.B. "1000" (=10%)
 
   // Caps (optional)
-  PRESALE_MIN_USDC?: string;  // "10"
-  PRESALE_MAX_USDC?: string;  // "1000"
+  PRESALE_MIN_USDC?: string;  // z.B. "10"
+  PRESALE_MAX_USDC?: string;  // z.B. "1000"
 
   // Early Claim
   EARLY_CLAIM_ENABLED: string; // "true"/"false"
@@ -32,8 +32,8 @@ export interface Env {
   GATE_NFT_MINT?: string;       // NFT-Mint für Rabattgate
 
   // Infra
-  SOLANA_RPC: string;           // z.B. https://mainnet.helius-rpc.com/?api-key=...
-  ALLOWED_ORIGINS: string;      // CSV: https://inpinity.online,https://inpi-token.pages.dev
+  SOLANA_RPC: string;           // z.B. https://rpc.helius.xyz/?api-key=...
+  ALLOWED_ORIGINS: string;      // CSV inkl. Wildcards (https://*.inpi-token.pages.dev)
   PAGES_UPSTREAM: string;       // https://inpi-token.pages.dev
 }
 
@@ -48,24 +48,65 @@ const json = (obj: unknown, status = 200, extra: Record<string, string> = {}) =>
     }
   });
 
-const cors = (env: Env) => {
-  const origins = (env.ALLOWED_ORIGINS || "*")
-    .split(",").map(s => s.trim()).filter(Boolean);
-  return (origin?: string) => ({
-    "access-control-allow-origin":
-      origin && origins.includes(origin) ? origin : (origins[0] || "*"),
-    "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type",
-    "access-control-max-age": "86400"
-  });
-};
+/** CORS mit Wildcard-Support + sauberes Caching via Vary: Origin */
+function buildCors(env: Env) {
+  const list = (env.ALLOWED_ORIGINS || "*")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  const hasStar = list.includes("*");
+
+  // exakte Origins ODER Wildcards wie https://*.inpi-token.pages.dev
+  function matchOrigin(origin?: string): string {
+    if (!origin) return hasStar ? "*" : (list[0] || "*");
+    if (hasStar) return "*";
+    if (list.includes(origin)) return origin;
+
+    try {
+      const o = new URL(origin);
+      const host = o.hostname.toLowerCase();
+      const proto = o.protocol; // "https:"
+
+      for (const pat of list) {
+        const m = pat.match(/^(https?:\/\/)?(\*\.)?(.+)$/i);
+        if (!m) continue;
+
+        const patProto = (m[1] || "").toLowerCase();
+        const hasWildcard = !!m[2];
+        const baseHost = m[3].toLowerCase();
+
+        if (patProto && patProto !== proto) continue;
+
+        if (!hasWildcard) {
+          if (host === baseHost) return origin;
+        } else {
+          if (host === baseHost || host.endsWith("." + baseHost)) return origin;
+        }
+      }
+    } catch { /* ignore */ }
+
+    return list[0] || "*";
+  }
+
+  return (origin?: string) => {
+    const allow = matchOrigin(origin);
+    return {
+      "access-control-allow-origin": allow,
+      "access-control-allow-methods": "GET,POST,OPTIONS",
+      "access-control-allow-headers": "content-type",
+      "access-control-max-age": "86400",
+      "vary": "Origin"
+    };
+  };
+}
 
 function randomRef(): string {
   const a = crypto.getRandomValues(new Uint8Array(16));
   return [...a].map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// QR-only: nur die solana: URI (keine App-Deep-Links)
+// Solana Pay: Empfänger = CREATOR (Owner). Wallet leitet via spl-token zur USDC-ATA.
 function solanaPay(
   recipient: string,
   amount: number,
@@ -81,6 +122,14 @@ function solanaPay(
   u.searchParams.set("message", message);
   u.searchParams.set("memo", memo);
   return u.toString();
+}
+
+function universalLinks(link: string) {
+  return {
+    solana_pay_url: link,
+    phantom_universal_url: `https://phantom.app/ul/v1/solana-pay?link=${encodeURIComponent(link)}`,
+    solflare_universal_url: `https://solflare.com/ul/v1/solana-pay?link=${encodeURIComponent(link)}`
+  };
 }
 
 async function rpcReq(env: Env, method: string, params: unknown[]) {
@@ -110,7 +159,6 @@ async function getTokenUiAmount(env: Env, owner: string, mint: string): Promise<
     }
     return total;
   } catch {
-    // Bei RPC-Ausfall nicht hart fehlschlagen – UI zeigt dann 0
     return 0;
   }
 }
@@ -130,15 +178,11 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
   const isAsset = (p: string) =>
     /\.(?:js|css|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|map|json)$/.test(p);
 
-  // Wir probieren beide Varianten:
-  //  1) exakter Pfad (mit /token)
-  //  2) Root (ohne /token)
+  // 1) exakter Pfad (mit /token), 2) Root (ohne /token)
   const pathVariants = [
-    url.pathname,                         // /token/...
-    url.pathname.replace(/^\/token/, ""), // /...
+    url.pathname,
+    url.pathname.replace(/^\/token/, "") || "/",
   ];
-
-  let lastErr: unknown = null;
 
   for (const p of pathVariants) {
     try {
@@ -150,7 +194,7 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
         redirect: "manual"
       });
 
-      // Redirects so umbiegen, dass der Client unter /token/ bleibt
+      // Redirects umbiegen, damit der Client unter /token/ bleibt
       if (r.status >= 300 && r.status < 400) {
         const loc = r.headers.get("location");
         if (loc && loc.startsWith("/")) {
@@ -176,17 +220,17 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
       if (ct.includes("text/html")) {
         let html = await r.text();
 
-        // 1) absolute Upstream-Domain raus, damit root-absolute erkannt werden
+        // absolute Upstream-Domain entfernen
         const upstreamOrigin = new URL(env.PAGES_UPSTREAM).origin;
         const esc = upstreamOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         html = html.replace(new RegExp(esc, "g"), "");
 
-        // 2) root-absolute Pfade auf /token/ präfixen (wenn nicht schon /token/)
+        // root-absolute Pfade auf /token/ präfixen
         html = html
           .replace(/(href|src|action)=["']\/(?!token\/)/g, '$1="/token/')
           .replace(/data-(href|src)=["']\/(?!token\/)/g, 'data-$1="/token/');
 
-        // 3) <base href="/token/"> ergänzen, falls nicht vorhanden
+        // <base href="/token/"> injizieren (falls nicht vorhanden)
         if (html.includes("<head") && !/base\s+href=/i.test(html)) {
           html = html.replace("<head>", '<head><base href="/token/">');
         }
@@ -198,13 +242,12 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
 
       // alles andere durchreichen
       return new Response(r.body, { status: r.status, headers: h });
-    } catch (e) {
-      lastErr = e;
+    } catch {
+      // nächste Variante probieren
       continue;
     }
   }
 
-  // beide Varianten fehlgeschlagen
   return new Response("Upstream not reachable", { status: 502 });
 }
 
@@ -212,7 +255,8 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url  = new URL(req.url);
-    const corsHeaders = cors(env)(req.headers.get("origin") || undefined);
+    const cors = buildCors(env);
+    const corsHeaders = cors(req.headers.get("origin") || undefined);
 
     if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -277,7 +321,7 @@ export default {
         ]);
         return json({ usdc: { uiAmount: usdc }, inpi: { uiAmount: inpi }, gate_ok: !!gate }, 200, corsHeaders);
       } catch (e: any) {
-        // Niemals 403/500 unkommentiert nach außen – UI soll weiterlaufen
+        // UI soll weiterlaufen
         return json({ usdc: { uiAmount: 0 }, inpi: { uiAmount: 0 }, gate_ok: false, error: String(e?.message || e) }, 200, corsHeaders);
       }
     }
@@ -291,23 +335,63 @@ export default {
       return json({ pending_inpi }, 200, corsHeaders);
     }
 
-    /* ---- API: presale/intent (QR only) ---- */
+    /* ---- API: presale/intent
+       Request-Body:
+       { wallet: string, amount_usdc?: number, amount_inpi?: number }
+       - Wenn amount_inpi gesetzt ist, wird amount_usdc anhand PRESALE_PRICE_USDC
+         berechnet; hat das Wallet das Gate-NFT, wird DISCOUNT_BPS berücksichtigt.
+    ------------------------------------------------------------------ */
     if (url.pathname.endsWith("/api/token/presale/intent") && req.method === "POST") {
-      const { wallet, amount_usdc, kind } = await req.json().catch(()=>({}));
-      if (!wallet || !amount_usdc) return json({ error:"wallet & amount_usdc required" }, 400, corsHeaders);
+      const { wallet, amount_usdc, amount_inpi, kind } = await req.json().catch(()=>({}));
+      if (!wallet || (!amount_usdc && !amount_inpi))
+        return json({ error:"wallet & (amount_usdc|amount_inpi) required" }, 400, corsHeaders);
+
+      const min = env.PRESALE_MIN_USDC ? parseFloat(env.PRESALE_MIN_USDC) : null;
+      const max = env.PRESALE_MAX_USDC ? parseFloat(env.PRESALE_MAX_USDC) : null;
+      const presale = parseFloat(env.PRESALE_PRICE_USDC || "0");
+      const discBps = parseInt(env.DISCOUNT_BPS || "0", 10);
+
+      // USDC-Betrag bestimmen
+      let usdc = typeof amount_usdc === "number" ? Number(amount_usdc) : NaN;
+      if (!Number.isFinite(usdc) && Number.isFinite(Number(amount_inpi))) {
+        // optional: Rabatt, wenn Gate-NFT vorhanden
+        let price = presale;
+        if (env.GATE_NFT_MINT && discBps > 0) {
+          const gate = await hasNft(env, wallet, env.GATE_NFT_MINT).catch(()=>false);
+          if (gate) price = Math.round(presale * (1 - discBps / 10000) * 1e6) / 1e6;
+        }
+        usdc = Math.round(Number(amount_inpi) * price * 1e6) / 1e6;
+      }
+
+      if (!Number.isFinite(usdc) || usdc <= 0) return json({ error:"invalid amount" }, 400, corsHeaders);
+      if (min != null && usdc < min) return json({ error:`min ${min} USDC` }, 400, corsHeaders);
+      if (max != null && usdc > max) return json({ error:`max ${max} USDC` }, 400, corsHeaders);
 
       const mode = kind === "early-claim" ? "early-claim" : "presale";
-      const ref = randomRef(); const memo = `INPI-${mode}-${ref}`;
-      const payUrl = solanaPay(env.CREATOR, Number(amount_usdc), env.USDC_MINT, memo);
+      const ref  = randomRef();
+      const memo = `INPI-${mode}-${ref}`;
+
+      // Solana Pay Link (Empfänger = CREATOR, Wallet routed zur USDC-ATA)
+      const payUrl = solanaPay(env.CREATOR, usdc, env.USDC_MINT, memo);
+      const qr_url = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(payUrl)}`;
+      const links  = universalLinks(payUrl);
 
       await env.KV_PRESALE.put(
         `intent:${ref}`,
-        JSON.stringify({ ref, wallet, kind: mode, amount_usdc: Number(amount_usdc), created_at: Date.now(), memo, status:"pending" }),
+        JSON.stringify({
+          ref, wallet, kind: mode, amount_usdc: usdc,
+          created_at: Date.now(), memo, status:"pending"
+        }),
         { expirationTtl: 60*60*24*7 }
       );
 
-      const qr_url = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(payUrl)}`;
-      return json({ ok:true, ref, memo, qr_contribute: { qr_url, solana_pay_url: payUrl } }, 200, corsHeaders);
+      return json({
+        ok: true,
+        ref,
+        memo,
+        amount_usdc: usdc,
+        qr_contribute: { qr_url, ...links }
+      }, 200, corsHeaders);
     }
 
     /* ---- API: presale/check (Memo-Suche am Vault-ATA) ---- */
@@ -355,12 +439,18 @@ export default {
       const ref = randomRef();
       const memo = `INPI-early-claim-${ref}`;
       const amount = parseFloat(env.EARLY_FLAT_USDC || "1.0");
+
       const payUrl = solanaPay(env.CREATOR, amount, env.USDC_MINT, memo, "INPI Early Claim", "INPI Early Claim Fee");
       const qr_url = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(payUrl)}`;
+      const links  = universalLinks(payUrl);
 
-      await env.KV_CLAIMS.put(`early:${wallet}`, JSON.stringify({ wallet, ref, memo, amount, status:"pending", created_at: Date.now() }), { expirationTtl: 60*60*24*30 });
+      await env.KV_CLAIMS.put(
+        `early:${wallet}`,
+        JSON.stringify({ wallet, ref, memo, amount, status:"pending", created_at: Date.now() }),
+        { expirationTtl: 60*60*24*30 }
+      );
 
-      return json({ ok:true, ref, qr_url, solana_pay_url: payUrl }, 200, corsHeaders);
+      return json({ ok:true, ref, qr_url, ...links }, 200, corsHeaders);
     }
 
     /* ---- API: claim/confirm (Job stub) ---- */
@@ -384,19 +474,28 @@ export default {
       const ref = randomRef();
       const memo = `INPI-early-claim-${ref}`;
       const amount = parseFloat(env.EARLY_FLAT_USDC || "1.0");
+
       const payUrl = solanaPay(env.CREATOR, amount, env.USDC_MINT, memo, "INPI Early Claim", "INPI Early Claim Fee");
       const qr_url = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(payUrl)}`;
+      const links  = universalLinks(payUrl);
 
-      await env.KV_CLAIMS.put(`early:${wallet}`, JSON.stringify({ wallet, ref, memo, amount, status:"pending", created_at: Date.now() }), { expirationTtl: 60*60*24*30 });
+      await env.KV_CLAIMS.put(
+        `early:${wallet}`,
+        JSON.stringify({ wallet, ref, memo, amount, status:"pending", created_at: Date.now() }),
+        { expirationTtl: 60*60*24*30 }
+      );
 
-      return json({ ok:true, ref, qr_url, solana_pay_url: payUrl, amount_usdc: amount }, 200, corsHeaders);
+      return json({ ok:true, ref, qr_url, amount_usdc: amount, ...links }, 200, corsHeaders);
     }
 
     /* ---- API: generic RPC proxy ---- */
     if (url.pathname.endsWith("/api/token/rpc") && req.method === "POST") {
       const body = await req.text();
       const r = await fetch(env.SOLANA_RPC, { method: "POST", headers: { "content-type":"application/json" }, body });
-      return new Response(await r.text(), { status: r.status, headers: { "content-type":"application/json", ...corsHeaders } });
+      return new Response(await r.text(), {
+        status: r.status,
+        headers: { "content-type":"application/json", ...corsHeaders }
+      });
     }
 
     return json({ error: "not found" }, 404, corsHeaders);
