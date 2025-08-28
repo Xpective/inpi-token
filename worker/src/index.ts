@@ -5,7 +5,7 @@
  *  - /token*           → Proxy zu Cloudflare Pages (PAGES_UPSTREAM), mit HTML-Rewrite auf /token/
  *  - /api/token/*      → JSON-API (Status, Wallet-Balances, Presale-Intent inkl. QR, Early-Claim, RPC-Proxy)
  *
- * Setze in wrangler.toml u.a.:
+ * wrangler.toml (Auszug):
  *   main = "src/index.ts"
  *   compatibility_flags = ["nodejs_compat"]
  *   routes = [
@@ -13,7 +13,7 @@
  *     { pattern = "inpinity.online/token*",      zone_name = "inpinity.online" }
  *   ]
  *   [vars]
- *     SOLANA_RPC = "https://rpc.helius.xyz/?api-key=DEIN_HELIUS_KEY"
+ *     SOLANA_RPC = "https://mainnet.helius-rpc.com/?api-key=DEIN_HELIUS_KEY,https://api.mainnet-beta.solana.com"
  *     PAGES_UPSTREAM = "https://inpi-token.pages.dev"
  *     ALLOWED_ORIGINS = "https://inpinity.online,https://inpi-token.pages.dev,https://*.inpi-token.pages.dev"
  */
@@ -49,7 +49,7 @@ export interface Env {
   GATE_NFT_MINT?: string;       // NFT-Mint für Rabattgate
 
   // Infra
-  SOLANA_RPC: string;           // z.B. Helius https://rpc.helius.xyz/?api-key=...
+  SOLANA_RPC: string;           // CSV: erster probiert, rest Fallback
   ALLOWED_ORIGINS: string;      // CSV-Liste, kann Wildcards enthalten (https://*.inpi-token.pages.dev)
   PAGES_UPSTREAM: string;       // https://inpi-token.pages.dev
 }
@@ -74,18 +74,18 @@ function matchOrigin(origin: string, patterns: string[]): boolean {
     const oProto = u.protocol; // "https:"
     for (const p of patterns) {
       if (p === "*") return true;
-      // Erlaube schema + host mit optionalem wildcard
-      // Beispiele: "https://inpinity.online", "https://*.inpi-token.pages.dev"
-      const pu = new URL(p.replace("*.", "subdomain-placeholder.")); // trick: parsable machen
-      if (pu.protocol !== oProto) continue;
 
-      // host-RegEx aus Pattern bauen
+      // Schema prüfen
+      const scheme = p.startsWith("http://") ? "http:" : p.startsWith("https://") ? "https:" : "";
+      if (scheme && scheme !== oProto) continue;
+
+      // Host-Pattern extrahieren
+      const host = p.replace(/^https?:\/\//, "");
       const reHost = new RegExp(
         "^" +
-          p
-            .replace(/^https?:\/\//, "")
+          host
             .replace(/\./g, "\\.")
-            .replace(/\*/g, "[^.]+") + // '*' → eine Label-Ebene
+            .replace(/\*/g, "[^.]+") + // '*' → genau ein Label
           "$"
       );
       if (reHost.test(oHost)) return true;
@@ -156,25 +156,48 @@ function roundUsdc(n: number): number {
 
 /* --------------------------- RPC Helpers --------------------------- */
 
-async function rpcReq(env: Env, method: string, params: unknown[]) {
-  const r = await fetch(env.SOLANA_RPC, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
-  });
-  const t = await r.text();
-  let j: any;
-  try { j = JSON.parse(t); } catch { throw new Error(`RPC parse error: ${t}`); }
-  if (!r.ok || j?.error) {
-    const err = j?.error ? `${j.error.code}: ${j.error.message}` : `HTTP ${r.status}: ${t}`;
-    throw new Error(err);
+// Mehrere RPCs per CSV erlauben; erster ist „primary“, Rest Fallback
+function parseRpcList(s?: string) {
+  return (s || "https://api.mainnet-beta.solana.com")
+    .split(",").map(x => x.trim()).filter(Boolean);
+}
+function primaryRpc(s?: string) {
+  return parseRpcList(s)[0] || "https://api.mainnet-beta.solana.com";
+}
+
+async function rpcReqAny(env: Env, method: string, params: unknown[]) {
+  const urls = parseRpcList(env.SOLANA_RPC);
+  let lastErr: any = null;
+
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+      });
+
+      const t = await r.text();
+      let j: any;
+      try { j = JSON.parse(t); } catch { throw new Error(`RPC parse error @ ${url}: ${t}`); }
+
+      if (!r.ok || j?.error) {
+        const msg = j?.error ? `${j.error.code}: ${j.error.message}` : `HTTP ${r.status}: ${t}`;
+        throw new Error(`RPC ${url} → ${msg}`);
+      }
+      return j.result;
+    } catch (e) {
+      lastErr = e;
+      // bei 403/429/5xx → nächsten RPC probieren
+      continue;
+    }
   }
-  return j.result;
+  throw lastErr || new Error("No RPC available");
 }
 
 async function getTokenUiAmount(env: Env, owner: string, mint: string): Promise<number> {
   try {
-    const res = await rpcReq(env, "getParsedTokenAccountsByOwner",
+    const res = await rpcReqAny(env, "getParsedTokenAccountsByOwner",
       [owner, { mint }, { commitment: "confirmed" }]);
     let total = 0;
     for (const v of (res?.value || [])) {
@@ -196,7 +219,6 @@ async function hasNft(env: Env, owner: string, mint?: string): Promise<boolean> 
 /* ------------------------ Pages Proxy (/token) ------------------------ */
 
 const STATIC_RE = /\.(?:js|mjs|css|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|map|json|txt|pdf)(?:\?.*)?$/i;
-
 function isStaticPath(p: string) { return STATIC_RE.test(p); }
 
 async function fetchUpstream(url: string, req: Request) {
@@ -217,7 +239,7 @@ async function serveTokenFromPages(env: Env, req: Request, url: URL): Promise<Re
   const upstreamOrigin = upstream.origin;
 
   // Wir probieren 2 Pfad-Varianten: mit /token und ohne
-  const keep = url.pathname;                                 // /token/...
+  const keep = url.pathname;                                      // /token/...
   const strip = url.pathname.replace(/^\/token(?=\/|$)/, "") || "/"; // /...
 
   // Statische Assets: versuche beide; nimm den ersten, der kein HTML ist
@@ -289,7 +311,6 @@ async function serveTokenFromPages(env: Env, req: Request, url: URL): Promise<Re
 
     h.set("content-type", "text/html; charset=utf-8");
     h.delete("content-length");
-    // leichte Caching-Verbesserung für HTML
     if (!h.has("cache-control")) h.set("cache-control", "public, max-age=60");
     return new Response(html, { status: r.status, headers: h });
   }
@@ -310,7 +331,7 @@ async function handleStatus(env: Env, corsHeaders: Record<string,string>) {
   const discount_bps = parseInt(env.DISCOUNT_BPS || "1000", 10);
 
   return JSON_OK({
-    rpc_url: env.SOLANA_RPC,
+    rpc_url: primaryRpc(env.SOLANA_RPC),
     inpi_mint: env.INPI_MINT,
     usdc_mint: env.USDC_MINT,
 
@@ -353,6 +374,11 @@ async function handleBalances(env: Env, url: URL, corsHeaders: Record<string,str
   if (!wallet) return JSON_OK({ error: "wallet required" }, 400, corsHeaders);
 
   try {
+    // minimale Base58-Validierung (grobe Form)
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,60}$/.test(wallet)) {
+      return JSON_OK({ usdc:{uiAmount:0}, inpi:{uiAmount:0}, gate_ok:false, error:"invalid wallet" }, 200, corsHeaders);
+    }
+
     const [usdc, inpi, gate] = await Promise.all([
       getTokenUiAmount(env, wallet, env.USDC_MINT),
       getTokenUiAmount(env, wallet, env.INPI_MINT),
@@ -360,13 +386,19 @@ async function handleBalances(env: Env, url: URL, corsHeaders: Record<string,str
     ]);
     return JSON_OK({ usdc: { uiAmount: usdc }, inpi: { uiAmount: inpi }, gate_ok: !!gate }, 200, corsHeaders);
   } catch (e: any) {
-    return JSON_OK({ usdc: { uiAmount: 0 }, inpi: { uiAmount: 0 }, gate_ok: false, error: String(e?.message || e) }, 200, corsHeaders);
+    // WICHTIG: nie 500 – immer 200 mit erklärendem Feld
+    return JSON_OK({
+      usdc:{ uiAmount: 0 },
+      inpi:{ uiAmount: 0 },
+      gate_ok:false,
+      server_error: String(e?.message || e)
+    }, 200, corsHeaders);
   }
 }
 
 async function handleClaimStatus(env: Env, url: URL, corsHeaders: Record<string,string>) {
   const wallet = url.searchParams.get("wallet") || "";
-  if (!wallet) return JSON_OK({ error: "wallet required" }, 400, corsHeaders);
+  if (!wallet) return JSON_OK({ error:"wallet required" }, 400, corsHeaders);
   const raw = await env.KV_CLAIMS.get(`claimable:${wallet}`);
   return JSON_OK({ pending_inpi: raw ? parseFloat(raw) : 0 }, 200, corsHeaders);
 }
@@ -467,9 +499,9 @@ async function handlePresaleCheck(env: Env, url: URL, corsHeaders: Record<string
   const intend = JSON.parse(raw);
 
   try {
-    const sigs = await rpcReq(env, "getSignaturesForAddress", [env.USDC_VAULT_ATA, { limit: 80 }]);
+    const sigs = await rpcReqAny(env, "getSignaturesForAddress", [env.USDC_VAULT_ATA, { limit: 80 }]);
     for (const s of (sigs || [])) {
-      const tx = await rpcReq(env, "getTransaction", [s.signature, { maxSupportedTransactionVersion: 0 }]).catch(()=>null);
+      const tx = await rpcReqAny(env, "getTransaction", [s.signature, { maxSupportedTransactionVersion: 0 }]).catch(()=>null);
       const meta = tx?.meta;
       const logs = meta?.logMessages?.join("\n") || "";
       const inner = tx?.transaction?.message?.instructions || [];
@@ -503,7 +535,11 @@ async function handleEarlyIntent(env: Env, req: Request, corsHeaders: Record<str
   const payUrl = solanaPayURL(env.CREATOR, amount, env.USDC_MINT, memo, "INPI Early Claim", "INPI Early Claim Fee");
   const qr_url = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(payUrl)}`;
 
-  await env.KV_CLAIMS.put(`early:${wallet}`, JSON.stringify({ wallet, ref, memo, amount, status:"pending", created_at: Date.now() }), { expirationTtl: 60*60*24*30 });
+  await env.KV_CLAIMS.put(
+    `early:${wallet}`,
+    JSON.stringify({ wallet, ref, memo, amount, status:"pending", created_at: Date.now() }),
+    { expirationTtl: 60*60*24*30 }
+  );
 
   return JSON_OK({ ok:true, ref, qr_url, solana_pay_url: payUrl, ...walletLinks(payUrl) }, 200, corsHeaders);
 }
@@ -513,14 +549,20 @@ async function handleClaimConfirm(env: Env, req: Request, corsHeaders: Record<st
   if (!wallet || !fee_signature) return JSON_OK({ error:"wallet & fee_signature required" }, 400, corsHeaders);
 
   const job_id = randomRef();
-  await env.KV_CLAIMS.put(`job:${job_id}`, JSON.stringify({ wallet, fee_signature, queued_at: Date.now(), status: "queued" }), { expirationTtl: 60*60*24*3 });
+  await env.KV_CLAIMS.put(
+    `job:${job_id}`,
+    JSON.stringify({ wallet, fee_signature, queued_at: Date.now(), status: "queued" }),
+    { expirationTtl: 60*60*24*3 }
+  );
 
   return JSON_OK({ ok:true, job_id }, 200, corsHeaders);
 }
 
 async function handleRpcProxy(env: Env, req: Request, corsHeaders: Record<string,string>) {
   const body = await req.text();
-  const r = await fetch(env.SOLANA_RPC, { method: "POST", headers: { "content-type":"application/json" }, body });
+  // für Proxy nehmen wir den PRIMARY
+  const url = primaryRpc(env.SOLANA_RPC);
+  const r = await fetch(url, { method: "POST", headers: { "content-type":"application/json" }, body });
   return new Response(await r.text(), { status: r.status, headers: { "content-type":"application/json", ...corsHeaders } });
 }
 
@@ -530,23 +572,19 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     const corsHeaders = buildCors(env)(req.headers.get("origin"));
-    const isApi = url.pathname.startsWith("/api/token/");
 
-    // CORS Preflight
+    // CORS Preflight (für API)
     if (req.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
 
     // Static mount (Pages unter /token)
     if (url.pathname === "/token" || url.pathname.startsWith("/token/")) {
-      // Bei Proxy-Antwort KEINE CORS-Header nötig (gleiche Origin),
-      // aber schaden auch nicht:
-      const res = await serveTokenFromPages(env, req, url);
-      return res;
+      return serveTokenFromPages(env, req, url);
     }
 
     // ---- API Routing ----
-    if (isApi) {
+    if (url.pathname.startsWith("/api/token/")) {
       try {
         if (url.pathname.endsWith("/api/token/status") && req.method === "GET")
           return await handleStatus(env, corsHeaders);
@@ -577,6 +615,7 @@ export default {
 
         return JSON_OK({ error: "not found" }, 404, corsHeaders);
       } catch (e: any) {
+        // nur der API-Fallback darf mal 500 sein – einzelne Handler liefern selbst 200 mit Fehlern
         return JSON_OK({ error: String(e?.message || e) }, 500, corsHeaders);
       }
     }
