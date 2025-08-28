@@ -1,0 +1,37 @@
+{
+    "name": "Inpinity Token",
+    "symbol": "INPI",
+    "mint": "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1",
+    "usdc_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "creator": "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7UUtfHrCp",
+    "usdc_vault_ata": "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6",
+  
+    "presale_state": "open",
+    "tge_ts": 1757932800, 
+    "presale_price_usdc": 0.00031415,
+    "public_price_usdc": 0.00034999,
+    "cap_per_wallet_usdc": 1000,
+    "presale_deposit_usdc": true,
+  
+    "early_claim_enabled": true,
+    "early_flat_usdc": 1.0,
+  
+    "nft_gate_enabled": false,
+    "gate_mint": "",
+    "gate_collection": "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ",
+    "gate_discount_bps": 0,
+  
+    "supply_total": "3141592653",
+    "dist_bps": {
+      "presale": 1000,
+      "dex_liquidity": 1000,
+      "staking": 700,
+      "ecosystem": 3000,
+      "treasury": 3000,
+      "team": 1200,
+      "airdrop_nft": 100
+    },
+  
+    "external_url": "https://inpinity.online/token",
+    "docs": "https://inpinity.online/token/inpi"
+  }
