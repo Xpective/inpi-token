@@ -61,6 +61,7 @@ function fmt(n,d=2){ if(n==null||isNaN(n))return "–"; return Number(n).toLocal
 function fmti(n){ if(n==null||isNaN(n))return "–"; return Number(n).toLocaleString("de-DE"); }
 function solscan(addr){ return `https://solscan.io/account/${addr}`; }
 function nowSec(){ return Math.floor(Date.now()/1000); }
+function round6(n){ return Math.round(Number(n||0)*1e6)/1e6; }
 
 /* ---------- Web3 + Provider laden ---------- */
 function getPhantomProvider(){
@@ -140,7 +141,7 @@ async function loadPublicAppCfg(){
       if (Number.isFinite(v) && v>0) CFG.TGE_TS_FALLBACK = v;
     }
 
-    // Airdrop-Bonus (BUGFIX: korrektes Feld lesen)
+    // Airdrop-Bonus
     if (c?.AIRDROP_BONUS_BPS !== undefined) {
       const v = Number(c.AIRDROP_BONUS_BPS);
       if (Number.isFinite(v) && v>=0) CFG.AIRDROP_BONUS_BPS_FALLBACK = v;
@@ -235,14 +236,14 @@ const depositSolscanA = $("#depositSolscan");
 const depositOwnerEl = $("#depositOwner");
 const btnCopyDeposit = $("#btnCopyDeposit");
 
-// Presale QR
+// Presale QR (Hauptzahlung)
 const payArea = $("#payArea");
 const qrContrib = $("#inpi-qr");
 // Deep-Links
 const aPhantom = $("#link-phantom");
 const aSolflare = $("#link-solflare");
 
-// Early Claim
+// Early Claim (alter Flow – bleibt, wird aber nun auch im Intent mitgeliefert)
 const earlyBox = $("#earlyBox");
 const btnClaim = $("#btnClaim");
 const earlyArea = $("#earlyArea");
@@ -274,7 +275,8 @@ const STATE = {
   early: { enabled:false, flat_usdc:1, fee_dest_wallet:null },
   airdrop_bonus_bps: 600,
   claimable_inpi: 0,
-  supply_total: CFG.SUPPLY_FALLBACK, dist_bps: { ...CFG.DISTR_FALLBACK_BPS }
+  supply_total: CFG.SUPPLY_FALLBACK, dist_bps: { ...CFG.DISTR_FALLBACK_BPS },
+  input_mode: "USDC" // "USDC" | "INPI"
 };
 
 /* ---------- Preis/Erwartung ---------- */
@@ -282,10 +284,14 @@ function currentPriceUSDC(){
   const w = STATE.price_with_nft_usdc, wo = STATE.price_without_nft_usdc;
   return STATE.gate_ok ? (w ?? wo) : (wo ?? w) ;
 }
-function calcExpectedInpi(usdc){
-  if (!usdc||usdc<=0) return "–";
-  const price=currentPriceUSDC(); if (!price||price<=0) return "–";
-  return fmt(usdc/price,0) + " INPI";
+function calcExpectedText(val){
+  const price=currentPriceUSDC();
+  if (!val || val<=0 || !price || price<=0) return "–";
+  if (STATE.input_mode==="USDC"){
+    return fmt(val/price,0) + " INPI";
+  } else {
+    return "~ " + fmt(round6(val*price), 6) + " USDC";
+  }
 }
 function updatePriceRow(){
   if (!p0) return;
@@ -327,9 +333,15 @@ async function init(){
 
   updatePriceRow(); updateIntentAvailability();
 
-  if (inpAmount && STATE.presale_min_usdc != null) inpAmount.min = String(STATE.presale_min_usdc);
-  if (inpAmount && STATE.presale_max_usdc != null) inpAmount.max = String(STATE.presale_max_usdc);
+  // --- Eingabemodus (USDC/INPI) neben dem vorhandenen Input ergänzen ---
+  injectInputModeSwitcher();
+
   if (inpAmount && !inpAmount.step) inpAmount.step = "0.000001";
+  if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
+
+  // Caps nur in USDC-Hinweisen nutzen (Server validiert final)
+  if (inpAmount && STATE.presale_min_usdc != null && STATE.input_mode==="USDC") inpAmount.min = String(STATE.presale_min_usdc);
+  if (inpAmount && STATE.presale_max_usdc != null && STATE.input_mode==="USDC") inpAmount.max = String(STATE.presale_max_usdc);
 
   provider = getPhantomProvider();
   if (provider?.isPhantom){
@@ -365,7 +377,6 @@ async function init(){
   }
 
   tickTGE(); setInterval(tickTGE, 1000);
-  if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedInpi(Number(inpAmount.value||"0"));
   if (earlyBox) earlyBox.style.display = STATE.early.enabled ? "block" : "none";
   if (btnClaim) btnClaim.onclick = startEarlyFlow;
   if (btnEarlyConfirm) btnEarlyConfirm.onclick = confirmEarlyFee;
@@ -545,6 +556,8 @@ async function refreshBalances(){
     STATE.gate_ok = !!gate;
 
     updatePriceRow(); updateIntentAvailability();
+    // Erwartung neu anhand Modus
+    if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
   } catch(e){
     console.error(e);
     if (usdcBal) usdcBal.textContent="–";
@@ -601,17 +614,63 @@ function onDisconnected(){
 }
 
 /* ---------- Inputs ---------- */
-if (inpAmount && expectedInpi){
-  inpAmount.addEventListener("input", ()=>{
-    const usdc=Number(inpAmount.value||"0"); expectedInpi.textContent=calcExpectedInpi(usdc);
-  });
+function injectInputModeSwitcher(){
+  if (!inpAmount) return;
+  // vorhandenes Label finden
+  const parentLabel = inpAmount.closest("label");
+  if (parentLabel){
+    parentLabel.firstChild && (parentLabel.firstChild.nodeType===3) && (parentLabel.firstChild.textContent = "Betrag");
+    // Modus Select bauen
+    const wrap = document.createElement("div");
+    wrap.className = "row";
+    wrap.style.gap = ".5rem";
+    wrap.style.marginTop = ".25rem";
+    wrap.innerHTML = `
+      <label class="muted">Eingabe in&nbsp;
+        <select id="inpMode" style="padding:.15rem .35rem">
+          <option value="USDC" selected>USDC</option>
+          <option value="INPI">INPI</option>
+        </select>
+      </label>
+      <small class="muted" id="modeHint"></small>
+    `;
+    parentLabel.after(wrap);
+
+    const modeSel = $("#inpMode");
+    const modeHint = $("#modeHint");
+    const setHints = ()=>{
+      if (STATE.input_mode==="USDC"){
+        modeHint.textContent = "Du gibst die USDC-Summe an. Erwartung zeigt INPI.";
+        if (STATE.presale_min_usdc!=null) inpAmount.min = String(STATE.presale_min_usdc);
+        if (STATE.presale_max_usdc!=null) inpAmount.max = String(STATE.presale_max_usdc);
+      } else {
+        modeHint.textContent = "Du gibst die gewünschte INPI-Menge an. Der Server berechnet die USDC-Summe.";
+        inpAmount.removeAttribute("min"); inpAmount.removeAttribute("max");
+      }
+      expectedInpi && (expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0")));
+    };
+    modeSel.onchange = ()=>{
+      STATE.input_mode = modeSel.value;
+      setHints();
+    };
+    setHints();
+  }
+
+  // Live Erwartung
+  if (inpAmount && expectedInpi){
+    inpAmount.addEventListener("input", ()=>{
+      const v=Number(inpAmount.value||"0");
+      expectedInpi.textContent = calcExpectedText(v);
+    });
+  }
 }
+
 if (btnHowTo){
   btnHowTo.addEventListener("click",()=> {
     alert(`Kurzanleitung:
 1) Phantom verbinden
-2) Intent senden → QR oder Deep-Link für USDC-Zahlung
-3) Optional: Early-Claim (1 USDC) mit Signatur bestätigen`);
+2) Intent senden → QRs / Deep-Links nutzen (Presale & optional Early-Fee)
+3) Optional: Early-Claim separater Flow (falls nicht über den Intent genutzt)`);
   });
 }
 
@@ -623,26 +682,37 @@ if (btnPresaleIntent){
     if(!pubkey) return alert("Bitte zuerst mit Phantom verbinden.");
     if (STATE.presale_state==="closed") return alert("Presale ist geschlossen.");
 
-    const usdc = Number(inpAmount?.value || "0");
-    if (!usdc||usdc<=0) return alert("Bitte gültigen USDC-Betrag eingeben.");
-    if (STATE.presale_min_usdc!=null && usdc<STATE.presale_min_usdc) return alert(`Mindestens ${STATE.presale_min_usdc} USDC.`);
-    if (STATE.presale_max_usdc!=null && usdc>STATE.presale_max_usdc) return alert(`Maximal ${STATE.presale_max_usdc} USDC.`);
+    const v = Number(inpAmount?.value || "0");
+    if (!v||v<=0) return alert(`Bitte gültigen Betrag eingeben (${STATE.input_mode}).`);
+
+    // Optional: grobe Cap-Prüfung bei USDC-Modus (Server prüft sowieso final)
+    if (STATE.input_mode==="USDC"){
+      if (STATE.presale_min_usdc!=null && v<STATE.presale_min_usdc) return alert(`Mindestens ${STATE.presale_min_usdc} USDC.`);
+      if (STATE.presale_max_usdc!=null && v>STATE.presale_max_usdc) return alert(`Maximal ${STATE.presale_max_usdc} USDC.`);
+    }
 
     inFlight=true; if (intentMsg) intentMsg.textContent="Prüfe Caps & registriere Intent …";
     try{
       // optional signMessage
       let sig_b58=null, msg_str=null;
       if (provider?.signMessage){
-        msg_str = `INPI Presale Intent\nwallet=${pubkey.toBase58()}\namount_usdc=${usdc}\nts=${Date.now()}`;
+        const payloadLine = (STATE.input_mode==="USDC")
+          ? `amount_usdc=${v}`
+          : `amount_inpi=${v}`;
+        msg_str = `INPI Presale Intent\nwallet=${pubkey.toBase58()}\n${payloadLine}\nts=${Date.now()}`;
         const enc=new TextEncoder().encode(msg_str);
         let signed = await provider.signMessage(enc,"utf8").catch(async()=>{ try{ return await provider.signMessage(enc);}catch{ return null; }});
         const signatureBytes = (signed && signed.signature)? signed.signature : signed;
         if (signatureBytes?.length) sig_b58 = bs58Encode(signatureBytes);
       }
 
+      const body = { wallet: pubkey.toBase58(), sig_b58, msg_str };
+      if (STATE.input_mode==="USDC") body.amount_usdc = Number(v);
+      else body.amount_inpi = Number(v);
+
       const r = await fetch(`${CFG.API_BASE}/presale/intent?t=${Date.now()}`, {
         method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
-        body: JSON.stringify({ wallet: pubkey.toBase58(), amount_usdc: usdc, sig_b58, msg_str })
+        body: JSON.stringify(body)
       });
       const j = await r.json().catch(()=>null);
       if (!r.ok || !j?.ok) throw new Error(j?.error || j?.detail || "Intent fehlgeschlagen");
@@ -657,12 +727,30 @@ if (btnPresaleIntent){
       if (aPhantom && contrib.phantom_universal_url){ aPhantom.href = contrib.phantom_universal_url; aPhantom.style.display="inline-block"; }
       if (aSolflare && contrib.solflare_universal_url){ aSolflare.href = contrib.solflare_universal_url; aSolflare.style.display="inline-block"; }
 
+      // Zweiter QR: Early-Claim-Fee (falls geliefert)
+      const fee = j?.qr_early_fee;
+      if (fee) renderEarlyFeeInline(fee);
+
+      // UI-Text
       if (intentMsg){
+        const usedUsdc = contrib?.amount_usdc ?? body.amount_usdc ?? null;
+        const usedTxt = usedUsdc!=null ? `${round6(usedUsdc)} USDC` : (STATE.input_mode==="INPI" ? `${v} INPI (Server berechnet USDC)` : `${v} USDC`);
         intentMsg.textContent="";
-        const p1=document.createElement("p"); p1.textContent=`✅ Intent registriert. Bitte ${usdc} USDC via QR/Link senden (SPL-USDC).`;
-        const p2=document.createElement("p"); p2.textContent=`Optional: Nutze unten den Early-Claim (1 USDC Fee) für sofortige Gutschrift.`;
-        intentMsg.appendChild(p1); intentMsg.appendChild(p2); setBonusNote();
+        const p1=document.createElement("p"); p1.textContent=`✅ Intent registriert. Bitte ${usedTxt} via QR/Link senden (SPL-USDC).`;
+        intentMsg.appendChild(p1);
+
+        if (fee){
+          const p2=document.createElement("p"); p2.textContent=`Optional: Early-Claim sofort freischalten – zahle die 1 USDC Fee mit dem zweiten QR.`;
+          intentMsg.appendChild(p2);
+        } else {
+          const p2=document.createElement("p"); p2.textContent=`Optional: Nutze unten den Early-Claim (1 USDC Fee) für sofortige Gutschrift.`;
+          intentMsg.appendChild(p2);
+        }
+        setBonusNote();
       }
+
+      // Erwartung aktualisieren
+      if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
 
       await refreshStatus();
     }catch(e){
@@ -671,7 +759,7 @@ if (btnPresaleIntent){
   });
 }
 
-/* ---------- Early Claim ---------- */
+/* ---------- Early-Claim Fee (separater Flow bleibt) ---------- */
 async function startEarlyFlow(){
   if (!pubkey) return alert("Bitte zuerst Wallet verbinden.");
   if (!STATE.early.enabled) return alert("Early-Claim ist derzeit deaktiviert.");
@@ -688,8 +776,8 @@ async function startEarlyFlow(){
     const qrUrl = j.qr_url || null;
     lastDeepLinks.claimNow = {
       solana_pay_url: j.solana_pay_url || null,
-      phantom_universal_url: j.solana_pay_url ? `https://phantom.app/ul/v1/solana-pay?link=${encodeURIComponent(j.solana_pay_url)}` : null,
-      solflare_universal_url: j.solana_pay_url ? `https://solflare.com/ul/v1/solana-pay?link=${encodeURIComponent(j.solana_pay_url)}` : null
+      phantom_universal_url: j.phantom_universal_url || (j.solana_pay_url ? `https://phantom.app/ul/v1/solana-pay?link=${encodeURIComponent(j.solana_pay_url)}` : null),
+      solflare_universal_url: j.solflare_universal_url || (j.solana_pay_url ? `https://solflare.com/ul/v1/solana-pay?link=${encodeURIComponent(j.solana_pay_url)}` : null)
     };
 
     if (qrClaimNow && qrUrl) { qrClaimNow.src = qrUrl; qrClaimNow.style.display="block"; }
@@ -713,6 +801,36 @@ async function confirmEarlyFee(){
   }catch(e){ console.error(e); alert(e?.message||e); if (earlyMsg) earlyMsg.textContent="Fehler bei der Bestätigung."; }
 }
 
+/* ---------- Early-Fee QR Inline im Presale-Bereich ---------- */
+function renderEarlyFeeInline(fee){
+  // Container innerhalb payArea hinzufügen/aktualisieren
+  let feeBox = document.getElementById("inlineFeeBox");
+  if (!feeBox){
+    feeBox = document.createElement("div");
+    feeBox.id = "inlineFeeBox";
+    feeBox.className = "card";
+    feeBox.style.marginTop = ".8rem";
+    feeBox.innerHTML = `
+      <h3>Optional: Early-Claim Fee (1&nbsp;USDC)</h3>
+      <div class="row" style="gap:1rem;align-items:center;flex-wrap:wrap">
+        <img id="fee-qr" alt="Scan & pay Early-Claim Fee" width="240" height="240" class="qr" style="display:none"/>
+        <div class="col">
+          <p class="muted" id="feeMsg">Zahle die 1&nbsp;USDC Fee, um deine INPI vor TGE gutzuschreiben.</p>
+          <div class="row" style="gap:.5rem;flex-wrap:wrap;margin-top:.25rem">
+            <a id="link-phantom-fee"  class="btn secondary" href="#" target="_blank" rel="noopener" style="display:none">In&nbsp;Phantom&nbsp;öffnen</a>
+            <a id="link-solflare-fee" class="btn secondary" href="#" target="_blank" rel="noopener" style="display:none">In&nbsp;Solflare&nbsp;öffnen</a>
+          </div>
+        </div>
+      </div>
+    `;
+    payArea && payArea.appendChild(feeBox);
+  }
+  const img = $("#fee-qr");
+  if (img && fee?.qr_url){ img.src = fee.qr_url; img.style.display="block"; }
+  const aP = $("#link-phantom-fee"); if (aP && fee?.phantom_universal_url){ aP.href = fee.phantom_universal_url; aP.style.display="inline-block"; }
+  const aS = $("#link-solflare-fee"); if (aS && fee?.solflare_universal_url){ aS.href = fee.solflare_universal_url; aS.style.display="inline-block"; }
+}
+
 /* ---------- Base58 (encode)  — BUGFIX: Schleifenabbruch ---------- */
 const B58_ALPH = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 function bs58Encode(bytes){
@@ -723,7 +841,7 @@ function bs58Encode(bytes){
   while(n>0n){ 
     const rem=Number(n%58n); 
     out = B58_ALPH[rem]+out; 
-    n = n/58n;                  // <<<< wichtig (fix)
+    n = n/58n;
   }
   for (let i=0;i<zeros;i++) out="1"+out;
   return out || "1".repeat(zeros);
