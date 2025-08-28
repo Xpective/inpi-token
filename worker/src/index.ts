@@ -1,5 +1,6 @@
-// src/index.ts
+/// <reference types="@cloudflare/workers-types" />
 
+// src/index.ts
 export interface Env {
   // KV
   KV_PRESALE: KVNamespace;
@@ -13,31 +14,31 @@ export interface Env {
 
   // Presale / Pricing
   PRESALE_STATE: string;      // "pre" | "open" | "closed"
-  PRESALE_PRICE_USDC: string; // z.B. "0.00031415"
+  PRESALE_PRICE_USDC: string; // "0.00031415"
   PUBLIC_PRICE_USDC: string;  // optional
-  DISCOUNT_BPS?: string;      // z.B. "1000" (=10%)
+  DISCOUNT_BPS?: string;      // "1000" (=10%)
 
   // Caps (optional)
-  PRESALE_MIN_USDC?: string;  // z.B. "10"
-  PRESALE_MAX_USDC?: string;  // z.B. "1000"
+  PRESALE_MIN_USDC?: string;  // "10"
+  PRESALE_MAX_USDC?: string;  // "1000"
 
   // Early Claim
   EARLY_CLAIM_ENABLED: string; // "true"/"false"
-  EARLY_FLAT_USDC: string;     // z.B. "1.0"
+  EARLY_FLAT_USDC: string;     // "1.0"
 
   // Misc
-  TGE_TS: string;               // Unix Sek
-  AIRDROP_BONUS_BPS?: string;   // z.B. "600" (=6.00%)
+  TGE_TS: string;               // Unix Sekunden
+  AIRDROP_BONUS_BPS?: string;   // "600" (=6.00%)
   GATE_NFT_MINT?: string;       // NFT-Mint für Rabattgate
 
   // Infra
-  SOLANA_RPC: string;           // z.B. https://rpc.helius.xyz/?api-key=...
+  SOLANA_RPC: string;           // z.B. https://mainnet.helius-rpc.com/?api-key=...
   ALLOWED_ORIGINS: string;      // CSV: https://inpinity.online,https://inpi-token.pages.dev
   PAGES_UPSTREAM: string;       // https://inpi-token.pages.dev
 }
 
 /* ------------------------ helpers ------------------------ */
-const json = (obj: any, status = 200, extra: Record<string, string> = {}) =>
+const json = (obj: unknown, status = 200, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(obj), {
     status,
     headers: {
@@ -64,7 +65,7 @@ function randomRef(): string {
   return [...a].map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// QR-only: wir geben nur die solana: URI zurück – keine App-Deep-Links
+// QR-only: nur die solana: URI (keine App-Deep-Links)
 function solanaPay(
   recipient: string,
   amount: number,
@@ -82,8 +83,7 @@ function solanaPay(
   return u.toString();
 }
 
-async function rpcReq(env: Env, method: string, params: any[]) {
-  // Standard JSON-RPC Call – mit defensiver Fehlerbehandlung
+async function rpcReq(env: Env, method: string, params: unknown[]) {
   const r = await fetch(env.SOLANA_RPC, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -93,9 +93,7 @@ async function rpcReq(env: Env, method: string, params: any[]) {
   let j: any;
   try { j = JSON.parse(t); } catch { throw new Error(`RPC parse error: ${t}`); }
   if (!r.ok || j?.error) {
-    const err = j?.error
-      ? `${j.error.code}: ${j.error.message}`
-      : `HTTP ${r.status}: ${t}`;
+    const err = j?.error ? `${j.error.code}: ${j.error.message}` : `HTTP ${r.status}: ${t}`;
     throw new Error(err);
   }
   return j.result;
@@ -125,18 +123,20 @@ async function hasNft(env: Env, owner: string, mint?: string): Promise<boolean> 
 
 /* ---------- /token Proxy mit HTML-Rewrite ---------- */
 async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
-  // /token → /token/ (wichtig für relative Pfade)
+  // /token → /token/ (für relative Pfade im HTML)
   if (url.pathname === "/token" && req.method === "GET")
     return Response.redirect(url.origin + "/token/", 301);
 
   const upstreamOrigin = new URL(env.PAGES_UPSTREAM).origin;
-  const upstreamPath = url.pathname.replace(/^\/token/, "") || "/";
+
+  // NICHT kürzen: Upstream liefert unter /token/* (deine Pages-Struktur)
+  const upstreamPath = url.pathname;
   const target = new URL(upstreamPath + url.search, env.PAGES_UPSTREAM);
 
   const r = await fetch(target.toString(), {
     method: req.method,
     headers: req.headers,
-    body: ["GET", "HEAD"].includes(req.method) ? undefined : await req.arrayBuffer(),
+    body: ["GET","HEAD"].includes(req.method) ? undefined : await req.arrayBuffer(),
     redirect: "manual"
   });
 
@@ -145,7 +145,8 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
     const loc = r.headers.get("location");
     if (loc && loc.startsWith("/")) {
       const h = new Headers(r.headers);
-      h.set("location", "/token" + loc);
+      // auf /token/... biegen
+      h.set("location", "/token" + (loc.startsWith("/token") ? loc.slice(6) : loc));
       return new Response(null, { status: r.status, headers: h });
     }
     return r;
@@ -154,7 +155,7 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
   const ct = r.headers.get("content-type") || "";
   const h = new Headers(r.headers);
 
-  // Caching für statische Assets
+  // Cache für statische Assets
   if (r.ok && /\.(?:js|css|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|map|json)$/.test(upstreamPath)) {
     h.set("cache-control", "public, max-age=600");
   }
@@ -162,15 +163,16 @@ async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
   if (ct.includes("text/html")) {
     let html = await r.text();
 
-    // Absolute Domainpfade → /token/
-    html = html.replaceAll(upstreamOrigin + "/", "/token/");
-    // Root-absolute Pfade in Attributen
-    html = html
-      .replaceAll('href="/', 'href="/token/')
-      .replaceAll('src="/', 'src="/token/')
-      .replaceAll('action="/', 'action="/token/');
+    // 1) Absolute Domain → entfernen, damit wir root-absolute erkennen
+    const esc = upstreamOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    html = html.replace(new RegExp(esc, "g"), "");
 
-    // <base href="/token/"> injizieren, falls nicht vorhanden
+    // 2) Root-absolute Pfade präfixen, wenn nicht schon /token/
+    html = html
+      .replace(/(href|src|action)=["']\/(?!token\/)/g, '$1="/token/')
+      .replace(/data-(href|src)=["']\/(?!token\/)/g, 'data-$1="/token/');
+
+    // 3) <base> setzen, falls fehlt
     if (html.includes("<head") && !/base\s+href=/i.test(html)) {
       html = html.replace("<head>", '<head><base href="/token/">');
     }
@@ -189,8 +191,7 @@ export default {
     const url  = new URL(req.url);
     const corsHeaders = cors(env)(req.headers.get("origin") || undefined);
 
-    if (req.method === "OPTIONS")
-      return new Response(null, { headers: corsHeaders });
+    if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
     /* ---- Static unter /token ---- */
     if (url.pathname === "/token" || url.pathname.startsWith("/token/"))
@@ -251,19 +252,10 @@ export default {
           getTokenUiAmount(env, wallet, env.INPI_MINT),
           hasNft(env, wallet, env.GATE_NFT_MINT)
         ]);
-        return json({
-          usdc: { uiAmount: usdc },
-          inpi: { uiAmount: inpi },
-          gate_ok: !!gate
-        }, 200, corsHeaders);
+        return json({ usdc: { uiAmount: usdc }, inpi: { uiAmount: inpi }, gate_ok: !!gate }, 200, corsHeaders);
       } catch (e: any) {
         // Niemals 403/500 unkommentiert nach außen – UI soll weiterlaufen
-        return json({
-          usdc: { uiAmount: 0 },
-          inpi: { uiAmount: 0 },
-          gate_ok: false,
-          error: String(e?.message || e)
-        }, 200, corsHeaders);
+        return json({ usdc: { uiAmount: 0 }, inpi: { uiAmount: 0 }, gate_ok: false, error: String(e?.message || e) }, 200, corsHeaders);
       }
     }
 
