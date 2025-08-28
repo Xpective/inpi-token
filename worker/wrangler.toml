@@ -14,17 +14,29 @@ kv_namespaces = [
 ]
 
 [vars]
-USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZ..."
-INPI_MINT = "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4A..."
-CREATOR   = "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7U..."
-USDC_VAULT_ATA = "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbA..."
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+INPI_MINT = "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1"
+CREATOR   = "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7U..."            # Owner/Empfänger
+USDC_VAULT_ATA = "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6"   # USDC-ATA
+
 PRESALE_STATE = "open"
 PRESALE_PRICE_USDC = "0.00031415"
-PUBLIC_PRICE_USDC = "0.00034999"
+PUBLIC_PRICE_USDC  = "0.00034999"
 CAP_PER_WALLET_USDC = "1000"
+
 EARLY_CLAIM_ENABLED = "true"
-EARLY_FLAT_USDC = "1.0"
+EARLY_FLAT_USDC     = "1.0"
+
 TGE_TS = "1757932800"
+
+# NEU für Rabatt/NFT-Gate:
+DISCOUNT_BPS   = "1000"
+GATE_NFT_MINT  = "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ"
+
+# Optional/Fallbacks:
+SUPPLY_TOTAL = "3141592653"
+AIRDROP_BONUS_BPS = "600"
+
 ALLOWED_ORIGINS = "https://inpinity.online,https://inpi-token.pages.dev,https://*.inpi-token.pages.dev"
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
 PAGES_UPSTREAM = "https://inpi-token.pages.dev"
