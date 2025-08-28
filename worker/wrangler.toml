@@ -1,7 +1,7 @@
 name = "inpinity-presale-worker"
 main = "src/index.ts"
 compatibility_date = "2025-08-25"
-node_compat = true
+
 
 routes = [
   # API:
@@ -29,7 +29,9 @@ EARLY_CLAIM_ENABLED = "true"
 EARLY_FLAT_USDC = "1.0"
 TGE_TS = "1757932800"
 
-ALLOWED_ORIGINS = "https://inpinity.online,https://inpi-token.pages.dev"
+# in worker/wrangler.toml
+[vars]
+ALLOWED_ORIGINS = "https://inpinity.online,https://inpi-token.pages.dev,https://*.inpi-token.pages.dev"
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
 
 # Upstream der Pages-Preview (automatisch von Cloudflare, Name = Pages-Projekt)
