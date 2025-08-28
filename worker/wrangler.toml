@@ -1,0 +1,36 @@
+name = "inpinity-presale-worker"
+main = "src/index.ts"
+compatibility_date = "2025-08-25"
+node_compat = true
+
+routes = [
+  # API:
+  { pattern = "inpinity.online/api/token/*", zone_name = "inpinity.online" },
+  # Mount Pages-Projekt auf Pfad /token:
+  { pattern = "inpinity.online/token*", zone_name = "inpinity.online" }
+]
+
+kv_namespaces = [
+  { binding = "KV_PRESALE", id = "ac3b4c80ae9e4b77abcee11dab27f199", preview_id = "XXXX_KV_PRESALE_PREVIEW" },
+  { binding = "KV_CLAIMS",  id = "86ad86beb528411dbe6df7a7558300cf",  preview_id = "XXXX_KV_CLAIMS_PREVIEW" }
+]
+
+[vars]
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+INPI_MINT = "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1"
+CREATOR   = "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7UUtfHrCp"
+USDC_VAULT_ATA = "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6"
+
+PRESALE_STATE = "open"
+PRESALE_PRICE_USDC = "0.00031415"
+PUBLIC_PRICE_USDC  = "0.00034999"
+CAP_PER_WALLET_USDC = "1000"
+EARLY_CLAIM_ENABLED = "true"
+EARLY_FLAT_USDC = "1.0"
+TGE_TS = "1757932800"
+
+ALLOWED_ORIGINS = "https://inpinity.online,https://inpi-token.pages.dev"
+SOLANA_RPC = "https://api.mainnet-beta.solana.com"
+
+# Upstream der Pages-Preview (automatisch von Cloudflare, Name = Pages-Projekt)
+PAGES_UPSTREAM = "https://inpi-token.pages.dev"
