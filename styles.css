@@ -1,0 +1,62 @@
+:root{
+  color-scheme: light dark;
+  --bg:#0b0d10; --bg-elev:#12151a; --text:#e9eef6; --muted:#9fb0c3; --line:#2a3240;
+  --primary:#6aa2ff; --primary-ink:#0a1a33; --ok:#29cc7a; --warn:#ffb84d; --error:#ff5d73;
+  --card-radius:14px; --shadow:0 10px 30px rgba(0,0,0,.25);
+  --font: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell;
+  --accent-purple:#8b5cf6; --accent-cyan:#06b6d4; --accent-ink:#03060a;
+}
+@media (prefers-color-scheme: light){
+  :root{ --bg:#fff; --bg-elev:#f7f9fc; --text:#111322; --muted:#5a6675; --line:#e7ebf2;
+         --primary:#1d64ff; --primary-ink:#f0f5ff; --accent-ink:#00131a; }
+}
+*{ box-sizing:border-box } html,body{ height:100% }
+body{ margin:0; background:var(--bg); color:var(--text); font:16px/1.45 var(--font) }
+
+.bar{ position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:14px;
+  padding:12px 20px; background:var(--bg-elev); border-bottom:1px solid var(--line); backdrop-filter:blur(6px) }
+.logo{ width:44px; height:44px; border-radius:11px; box-shadow:var(--shadow) }
+.bar h1{ font-size:20px; margin:0; font-weight:700; letter-spacing:.3px }
+
+main{ max-width:960px; margin:0 auto; padding:28px 20px 80px } section{ margin:28px 0 }
+footer{ border-top:1px solid var(--line); padding:18px 20px; text-align:center; color:var(--muted) }
+
+h2{ margin:0 0 12px; font-size:20px } .muted{ color:var(--muted) }
+a{ color:var(--primary); text-decoration:none } a:hover{ text-decoration:underline }
+
+.card{ border:1px solid var(--line); background:var(--bg-elev); border-radius:var(--card-radius); padding:16px; box-shadow:var(--shadow) }
+
+.stats{ display:grid; gap:10px 14px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)) }
+.stats>div{ border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:var(--bg-elev) }
+
+label{ display:block; margin:10px 0 6px; color:var(--muted) }
+input{ width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--line); background:transparent; color:var(--text); outline:none }
+input:focus-visible{ border-color:var(--primary); box-shadow:0 0 0 3px color-mix(in oklab, var(--primary) 25%, transparent) }
+
+button, .btn{
+  appearance:none; border:0; cursor:pointer; display:inline-block; text-decoration:none;
+  padding:10px 14px; border-radius:12px; background:var(--primary); color:white; font-weight:600;
+  transition:transform .06s ease, opacity .2s ease, box-shadow .2s ease, filter .2s ease;
+}
+button.secondary, .btn.secondary{ background:transparent; color:var(--text); border:1px solid var(--line) }
+button:disabled{ opacity:.55; cursor:not-allowed } button:active, .btn:active{ transform: translateY(1px) }
+button:focus-visible, .btn:focus-visible{
+  outline:3px solid color-mix(in oklab, var(--primary) 60%, transparent); outline-offset:2px;
+}
+.btn.btn-accent{ background:linear-gradient(135deg,var(--accent-purple),var(--accent-cyan)); color:var(--accent-ink); border:0; box-shadow:0 6px 18px rgba(3,6,10,.35) }
+.btn.btn-accent:hover{ filter:brightness(1.05) }
+.btn.btn-accent:focus-visible{ outline:3px solid color-mix(in oklab, var(--accent-cyan) 60%, transparent) }
+
+code{ background:var(--primary-ink); color:var(--text); padding:2px 6px; border-radius:8px; border:1px solid var(--line); word-break:break-all }
+pre{ margin-top:12px; padding:12px 14px; border-radius:12px; border:1px solid var(--line); background:var(--bg-elev); max-height:360px; overflow:auto }
+
+.row{ display:flex; gap:10px; flex-wrap:wrap } .col{ display:flex; flex-direction:column; gap:.4rem } .hidden{ display:none !important }
+.badge{ display:inline-block; padding:3px 8px; border-radius:999px; font-size:12px; border:1px solid var(--line) }
+#gateBadge{ display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid var(--line); font-size:12px; color:var(--muted) }
+
+.qr{ border:1px solid var(--line); border-radius:8px }
+#tokTable{ width:100%; border-collapse:collapse } #tokTable th,#tokTable td{ padding:.4rem; border-bottom:1px solid var(--line) }
+#tokTable th{ text-align:left; color:var(--muted); font-weight:600 } #tokTable td:last-child,#tokTable th:last-child{ text-align:right }
+
+@media (max-width:560px){ .bar h1{ font-size:18px } .logo{ width:38px; height:38px } main{ padding:20px 16px 60px } }
+@media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important } }
