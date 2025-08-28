@@ -1,20 +1,19 @@
 /* ===========================================
    Inpinity Token – Frontend (Phantom-first)
-   Pfad: /public/token/app.js
+   Pfad: /pages/token/app.js
    =========================================== */
 
 /* ==================== KONFIG ==================== */
 const CFG = {
-  // Helius als Default-RPC (kann via /public/app-cfg überschrieben werden)
-  HELIUS_RPC: "https://rpc.helius.xyz/?api-key=d95932bb-5385-4d84-ad18-7fc66e014d58",
-  RPC: "https://rpc.helius.xyz/?api-key=d95932bb-5385-4d84-ad18-7fc66e014d58",
+  // Wird ggf. dynamisch via ./app-cfg.json überschrieben
+  RPC: "https://api.mainnet-beta.solana.com",
 
   INPI_MINT: "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1",
   USDC_MINT: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   API_BASE: "https://inpinity.online/api/token",
 
   // Rabatt & NFT-Gate
-  DISCOUNT_BPS_DEFAULT: 1000, // = 10%
+  DISCOUNT_BPS_DEFAULT: 1000, // 10 %
   GATE_NFT_MINT: "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ",
 
   // Preis-Fallbacks
@@ -25,7 +24,7 @@ const CFG = {
   DEPOSIT_USDC_ATA_FALLBACK:  "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6",
   DEPOSIT_OWNER_FALLBACK: null,
 
-  // Presale-Caps (werden aus /public/app-cfg übernommen, falls vorhanden)
+  // Presale-Caps
   PRESALE_MIN_USDC_FALLBACK: null,
   PRESALE_MAX_USDC_FALLBACK: null,
 
@@ -53,7 +52,7 @@ const CFG = {
 };
 
 /* ================ SOLANA / PHANTOM ================ */
-let Connection = null; // wird nachgeladen
+let Connection = null; // wird nachgeladen, falls nötig
 
 const $ = (sel) => document.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -62,27 +61,6 @@ function fmt(n,d=2){ if(n==null||isNaN(n))return "–"; return Number(n).toLocal
 function fmti(n){ if(n==null||isNaN(n))return "–"; return Number(n).toLocaleString("de-DE"); }
 function solscan(addr){ return `https://solscan.io/account/${addr}`; }
 function nowSec(){ return Math.floor(Date.now()/1000); }
-
-/* ---------- QR & Solana Pay ---------- */
-function makeQrUrl(data){
-  const d = encodeURIComponent(data);
-  return `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${d}`;
-}
-function toFixedTrim(n, dec){
-  const s = Number(n).toFixed(dec);
-  return s.replace(/\.?0+$/,"");
-}
-function buildSolanaPayUrl({recipient, amountUi, splToken, label, message, memo, reference}){
-  const base = `solana:${recipient}`;
-  const qp = new URLSearchParams();
-  if (amountUi!=null) qp.set("amount", toFixedTrim(amountUi, 6)); // USDC: 6 Decimals
-  if (splToken) qp.set("spl-token", splToken);
-  if (label) qp.set("label", label);
-  if (message) qp.set("message", message);
-  if (memo) qp.set("memo", memo);
-  if (reference) qp.set("reference", reference);
-  return `${base}?${qp.toString()}`;
-}
 
 /* ---------- Web3 + Provider laden ---------- */
 function getPhantomProvider(){
@@ -113,55 +91,31 @@ function ensureWeb3(){
   });
 }
 
-/* ---------- Helpers: RPC & Fallback ---------- */
-let connection = null, currentRpcUrl = null;
-function isForbiddenError(e){
-  const m = String(e?.message||e||"").toLowerCase();
-  return m.includes("403") || m.includes("forbidden");
-}
-function setConnection(url){
-  connection = new Connection(url, "confirmed");
-  currentRpcUrl = url;
-}
-async function withRpcFallback(fn){
-  try{
-    return await fn();
-  }catch(e){
-    // bei 403 o.ä. auf Helius umschalten und einmal retry
-    if (!isForbiddenError(e)) throw e;
-    if (currentRpcUrl !== (STATE.rpc_url || CFG.HELIUS_RPC)){
-      setConnection(STATE.rpc_url || CFG.HELIUS_RPC);
-    }
-    if (currentRpcUrl !== CFG.HELIUS_RPC){
-      setConnection(CFG.HELIUS_RPC);
-    }
-    return await fn();
-  }
-}
-
-/* ---------- /public/app-cfg laden (optional) ---------- */
+/* ---------- ./app-cfg.json laden (optional) ---------- */
 async function loadPublicAppCfg(){
   try{
-    const r = await fetch("/public/app-cfg", { headers:{accept:"application/json"} });
+    const r = await fetch("./app-cfg.json", { headers:{accept:"application/json"} });
     if (!r.ok) return;
     const c = await r.json();
 
-    if (c?.HELIUS_RPC) CFG.HELIUS_RPC = c.HELIUS_RPC;
+    // Basis
     if (c?.RPC) CFG.RPC = c.RPC;
-
     if (c?.API_BASE) CFG.API_BASE = c.API_BASE;
     if (c?.INPI_MINT) CFG.INPI_MINT = c.INPI_MINT;
     if (c?.USDC_MINT) CFG.USDC_MINT = c.USDC_MINT;
 
+    // Rabatt & Gate
     if (c?.DISCOUNT_BPS !== undefined) {
       const v = Number(c.DISCOUNT_BPS);
       if (Number.isFinite(v) && v>=0) CFG.DISCOUNT_BPS_DEFAULT = v;
     }
     if (c?.GATE_NFT_MINT) CFG.GATE_NFT_MINT = String(c.GATE_NFT_MINT);
 
+    // Deposit / Owner
     if (c?.CREATOR_USDC_ATA) CFG.DEPOSIT_USDC_ATA_FALLBACK = c.CREATOR_USDC_ATA;
     if (c?.DEPOSIT_OWNER) CFG.DEPOSIT_OWNER_FALLBACK = c.DEPOSIT_OWNER;
 
+    // Preis + Rabatt (nur falls explizit konfiguriert)
     const base = Number(c?.PRICE_USDC_PER_INPI);
     const disc = Number(c?.DISCOUNT_BPS ?? CFG.DISCOUNT_BPS_DEFAULT);
     if (Number.isFinite(base) && base>0){
@@ -170,6 +124,7 @@ async function loadPublicAppCfg(){
       CFG.PRICE_WITH_NFT_FALLBACK = Math.round(withNft*1e6)/1e6;
     }
 
+    // Caps
     if (c?.PRESALE_MIN_USDC !== undefined) {
       const v = Number(c.PRESALE_MIN_USDC);
       CFG.PRESALE_MIN_USDC_FALLBACK = Number.isFinite(v) ? v : null;
@@ -179,16 +134,19 @@ async function loadPublicAppCfg(){
       CFG.PRESALE_MAX_USDC_FALLBACK = Number.isFinite(v) ? v : null;
     }
 
+    // TGE
     if (c?.TGE_TS !== undefined) {
       const v = Number(c.TGE_TS);
       if (Number.isFinite(v) && v>0) CFG.TGE_TS_FALLBACK = v;
     }
 
-    if (c?.AIRDROP_BONUS_BPS !== undefined) { // fix
+    // Airdrop-Bonus (BUGFIX: korrektes Feld lesen)
+    if (c?.AIRDROP_BONUS_BPS !== undefined) {
       const v = Number(c.AIRDROP_BONUS_BPS);
       if (Number.isFinite(v) && v>=0) CFG.AIRDROP_BONUS_BPS_FALLBACK = v;
     }
 
+    // Tokenomics
     if (c?.SUPPLY_TOTAL !== undefined){
       const v = Number(c.SUPPLY_TOTAL);
       if (Number.isFinite(v) && v>0) CFG.SUPPLY_FALLBACK = v;
@@ -277,10 +235,10 @@ const depositSolscanA = $("#depositSolscan");
 const depositOwnerEl = $("#depositOwner");
 const btnCopyDeposit = $("#btnCopyDeposit");
 
-// Nur QR (keine Deeplinks)
+// Presale QR
 const payArea = $("#payArea");
 const qrContrib = $("#inpi-qr");
-// (Anchors werden aktiv versteckt)
+// Deep-Links
 const aPhantom = $("#link-phantom");
 const aSolflare = $("#link-solflare");
 
@@ -301,7 +259,9 @@ gateBadge.className = "muted";
 if (p0?.parentElement) p0.parentElement.appendChild(gateBadge);
 
 /* ---------- State ---------- */
-let provider = null, pubkey = null, POLL = null;
+let connection = null, currentRpcUrl = null, provider = null, pubkey = null, POLL = null;
+let lastDeepLinks = { contribute:null, claimNow:null };
+let listenersAttached = false;
 let lastGateCheckTs = 0;
 
 const STATE = {
@@ -320,7 +280,7 @@ const STATE = {
 /* ---------- Preis/Erwartung ---------- */
 function currentPriceUSDC(){
   const w = STATE.price_with_nft_usdc, wo = STATE.price_without_nft_usdc;
-  return STATE.gate_ok ? (w ?? wo) : (wo ?? w);
+  return STATE.gate_ok ? (w ?? wo) : (wo ?? w) ;
 }
 function calcExpectedInpi(usdc){
   if (!usdc||usdc<=0) return "–";
@@ -349,21 +309,21 @@ function updateIntentAvailability(){
 
 /* ==================== INIT ==================== */
 async function init(){
-  // app-cfg einlesen (setzt Defaults dynamisch)
   await loadPublicAppCfg();
 
-  // web3.js sicherstellen
   const okWeb3 = await ensureWeb3();
-  if (!okWeb3) { alert("Fehler: web3.js konnte nicht geladen werden."); return; }
+  if (!okWeb3) {
+    alert("Fehler: web3.js konnte nicht geladen werden. Bitte Seite neu laden.");
+    return;
+  }
 
-  // API-Status laden
   await refreshStatus();
 
-  // RPC wählen: wenn nichts oder public mainnet → Helius
-  if (!STATE.rpc_url || /api\.mainnet-beta\.solana\.com/i.test(STATE.rpc_url)){
-    STATE.rpc_url = CFG.HELIUS_RPC || CFG.RPC;
+  if (!STATE.rpc_url) STATE.rpc_url = CFG.RPC;
+  if (!connection || currentRpcUrl !== STATE.rpc_url){
+    connection = new Connection(STATE.rpc_url, "confirmed");
+    currentRpcUrl=STATE.rpc_url;
   }
-  setConnection(STATE.rpc_url);
 
   updatePriceRow(); updateIntentAvailability();
 
@@ -371,23 +331,28 @@ async function init(){
   if (inpAmount && STATE.presale_max_usdc != null) inpAmount.max = String(STATE.presale_max_usdc);
   if (inpAmount && !inpAmount.step) inpAmount.step = "0.000001";
 
-  // Deeplinks verstecken (nur QR)
-  if (aPhantom) aPhantom.style.display="none";
-  if (aSolflare) aSolflare.style.display="none";
-
-  // Phantom
   provider = getPhantomProvider();
   if (provider?.isPhantom){
-    try{ await provider.connect({ onlyIfTrusted:true }).then(({publicKey})=>onConnected(publicKey)).catch(()=>{}); }catch{}
+    try{
+      await provider.connect({ onlyIfTrusted:true }).then(({publicKey})=>onConnected(publicKey)).catch(()=>{});
+    }catch{}
     if (btnConnect){
       btnConnect.disabled=false; btnConnect.textContent="Verbinden";
       btnConnect.onclick = async () => {
-        try{ const { publicKey } = await provider.connect(); onConnected(publicKey); }
-        catch(e){ console.error(e); alert("Wallet-Verbindung abgebrochen."); }
+        try{
+          const { publicKey } = await provider.connect();
+          onConnected(publicKey);
+        } catch(e){
+          console.error(e);
+          alert("Wallet-Verbindung abgebrochen.");
+        }
       };
     }
   } else {
-    if (btnConnect){ btnConnect.textContent="Phantom installieren"; btnConnect.onclick=()=> window.open("https://phantom.app","_blank","noopener"); }
+    if (btnConnect){
+      btnConnect.textContent="Phantom installieren";
+      btnConnect.onclick=()=> window.open("https://phantom.app","_blank","noopener");
+    }
   }
 
   if (btnCopyDeposit){
@@ -449,6 +414,7 @@ async function refreshStatus(){
       ? j.presale_max_usdc
       : (typeof CFG.PRESALE_MAX_USDC_FALLBACK === "number" ? CFG.PRESALE_MAX_USDC_FALLBACK : null);
 
+    // ---- Preislogik: Presale als Basis, NFT = Presale - Discount ----
     const presale = Number(j?.presale_price_usdc);
     const discBps = Number(j?.discount_bps ?? CFG.DISCOUNT_BPS_DEFAULT);
 
@@ -473,12 +439,13 @@ async function refreshStatus(){
     const ec=j?.early_claim||{};
     STATE.early.enabled = !!ec.enabled;
     STATE.early.flat_usdc = Number(ec.flat_usdc || 1);
-    STATE.early.fee_dest_wallet = ec.fee_dest_wallet || STATE.deposit_owner || STATE.deposit_ata || null;
+    STATE.early.fee_dest_wallet = ec.fee_dest_wallet || STATE.deposit_ata || null;
 
     STATE.airdrop_bonus_bps = Number(
       j?.airdrop_bonus_bps ?? CFG.AIRDROP_BONUS_BPS_FALLBACK ?? STATE.airdrop_bonus_bps
     );
 
+    // Tokenomics
     STATE.supply_total = Number(j?.supply_total || CFG.SUPPLY_FALLBACK);
     STATE.dist_bps = { ...CFG.DISTR_FALLBACK_BPS, ...{
       dist_presale_bps:        numOr(CFG.DISTR_FALLBACK_BPS.dist_presale_bps, j?.dist_presale_bps),
@@ -492,10 +459,9 @@ async function refreshStatus(){
     }};
 
     if (presaleState) presaleState.textContent = STATE.presale_state;
-    if (depositAddrEl) depositAddrEl.textContent = (STATE.deposit_owner || STATE.deposit_ata || "—");
+    if (depositAddrEl) depositAddrEl.textContent = STATE.deposit_ata || "—";
     if (depositSolscanA){
-      const addrShow = STATE.deposit_owner || STATE.deposit_ata;
-      if (addrShow){ depositSolscanA.href=solscan(addrShow); depositSolscanA.style.display="inline"; }
+      if (STATE.deposit_ata){ depositSolscanA.href=solscan(STATE.deposit_ata); depositSolscanA.style.display="inline"; }
       else depositSolscanA.style.display="none";
     }
     if (depositOwnerEl) depositOwnerEl.textContent = STATE.deposit_owner || "—";
@@ -503,8 +469,8 @@ async function refreshStatus(){
     updatePriceRow(); updateIntentAvailability(); setBonusNote(); renderTokenomics(STATE.supply_total, STATE.dist_bps);
   } catch (e){
     console.error(e);
-    // harte Fallbacks aus CFG
-    STATE.rpc_url=CFG.HELIUS_RPC || CFG.RPC;
+    // harte Fallbacks
+    STATE.rpc_url=CFG.RPC;
     STATE.inpi_mint=CFG.INPI_MINT;
     STATE.usdc_mint=CFG.USDC_MINT;
 
@@ -526,12 +492,12 @@ async function refreshStatus(){
     STATE.dist_bps={...CFG.DISTR_FALLBACK_BPS};
 
     if (presaleState) presaleState.textContent="API offline";
-    if (depositAddrEl) depositAddrEl.textContent = (STATE.deposit_owner || STATE.deposit_ata || "—");
+    if (depositAddrEl) depositAddrEl.textContent = STATE.deposit_ata || "—";
     if (depositSolscanA){
-      const addrShow = STATE.deposit_owner || STATE.deposit_ata;
-      if (addrShow){ depositSolscanA.href=solscan(addrShow); depositSolscanA.style.display="inline"; }
+      if (STATE.deposit_ata){ depositSolscanA.href=solscan(STATE.deposit_ata); depositSolscanA.style.display="inline"; }
       else depositSolscanA.style.display="none";
     }
+    if (depositOwnerEl) depositOwnerEl.textContent = STATE.deposit_owner || "—";
     updatePriceRow(); updateIntentAvailability(); setBonusNote(); renderTokenomics(STATE.supply_total, STATE.dist_bps);
   }
 }
@@ -541,7 +507,6 @@ function numOr(def, maybe){ const n=Number(maybe); return Number.isFinite(n)? n 
 async function checkNftGateFallback(){
   try{
     if (!pubkey || !connection || !CFG.GATE_NFT_MINT) return false;
-    // rate-limit (max. 1x pro 30s)
     const now = Date.now();
     if (now - lastGateCheckTs < 30000) return STATE.gate_ok;
     lastGateCheckTs = now;
@@ -549,7 +514,7 @@ async function checkNftGateFallback(){
     const owner = new window.solanaWeb3.PublicKey(pubkey.toBase58());
     const mint  = new window.solanaWeb3.PublicKey(CFG.GATE_NFT_MINT);
 
-    const resp = await withRpcFallback(()=>connection.getParsedTokenAccountsByOwner(owner, { mint }));
+    const resp = await connection.getParsedTokenAccountsByOwner(owner, { mint });
     for (const acc of (resp?.value || [])){
       const amt = acc?.account?.data?.parsed?.info?.tokenAmount;
       const ui = Number(amt?.uiAmount ?? 0);
@@ -562,26 +527,12 @@ async function checkNftGateFallback(){
   }
 }
 
-/* ---------- On-Chain Balances (Fallback) ---------- */
-async function getMintBalanceUi(ownerB58, mintB58){
-  const owner = new window.solanaWeb3.PublicKey(ownerB58);
-  const mint  = new window.solanaWeb3.PublicKey(mintB58);
-  const resp = await withRpcFallback(()=>connection.getParsedTokenAccountsByOwner(owner, { mint }));
-  let sum = 0;
-  for (const v of (resp?.value||[])){
-    const ui = Number(v?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0);
-    sum += ui;
-  }
-  return sum;
-}
-
 /* ---------- Wallet ---------- */
 async function refreshBalances(){
   if (!pubkey) return;
   try{
     const url = `${CFG.API_BASE}/wallet/balances?wallet=${encodeURIComponent(pubkey.toBase58())}&t=${Date.now()}`;
     const r = await fetch(url, { headers:{accept:"application/json"}});
-    if (!r.ok) throw new Error(`API ${r.status}`);
     const j = await r.json();
 
     const usdc = Number(j?.usdc?.uiAmount ?? NaN);
@@ -589,28 +540,15 @@ async function refreshBalances(){
     if (usdcBal) usdcBal.textContent = fmt(usdc,2);
     if (inpiBal) inpiBal.textContent = fmt(inpi,0);
 
-    // gate_ok bevorzugt von API, ansonsten Fallback on-chain
     let gate = (j?.gate_ok === true);
-    if (!gate) {
-      gate = await checkNftGateFallback();
-    }
+    if (!gate) { gate = await checkNftGateFallback(); }
     STATE.gate_ok = !!gate;
 
     updatePriceRow(); updateIntentAvailability();
   } catch(e){
-    console.warn("API balances failed, falling back on-chain:", e?.message||e);
-    try{
-      const [usdc,onInpi] = await Promise.all([
-        getMintBalanceUi(pubkey.toBase58(), STATE.usdc_mint || CFG.USDC_MINT),
-        getMintBalanceUi(pubkey.toBase58(), STATE.inpi_mint || CFG.INPI_MINT)
-      ]);
-      if (usdcBal) usdcBal.textContent = fmt(usdc,2);
-      if (inpiBal) inpiBal.textContent = fmt(onInpi,0);
-    }catch(err){
-      console.error("On-chain balance fallback failed:", err?.message||err);
-      if (usdcBal) usdcBal.textContent="–";
-      if (inpiBal) inpiBal.textContent="–";
-    }
+    console.error(e);
+    if (usdcBal) usdcBal.textContent="–";
+    if (inpiBal) inpiBal.textContent="–";
     const gate = await checkNftGateFallback().catch(()=>false);
     STATE.gate_ok = !!gate;
     updatePriceRow(); updateIntentAvailability();
@@ -620,7 +558,6 @@ async function refreshClaimStatus(){
   if (!pubkey) return;
   try{
     const r = await fetch(`${CFG.API_BASE}/claim/status?wallet=${pubkey.toBase58()}&t=${Date.now()}`, { headers:{accept:"application/json"} });
-    if (!r.ok) throw new Error(`API ${r.status}`);
     const st = await r.json();
 
     const pending = Number(st?.pending_inpi || 0);
@@ -645,8 +582,11 @@ function onConnected(publicKey){
   pubkey = publicKey;
   if (walletAddr) walletAddr.textContent = publicKey.toBase58();
 
-  provider?.on?.("accountChanged", (pk)=>{ if (!pk) { onDisconnected(); return; } onConnected(pk); });
-  provider?.on?.("disconnect", onDisconnected);
+  if (!listenersAttached) {
+    provider?.on?.("accountChanged", (pk)=>{ if (!pk) { onDisconnected(); return; } onConnected(pk); });
+    provider?.on?.("disconnect", onDisconnected);
+    listenersAttached = true;
+  }
 
   refreshBalances().catch(()=>{});
   refreshClaimStatus().catch(()=>{});
@@ -670,7 +610,7 @@ if (btnHowTo){
   btnHowTo.addEventListener("click",()=> {
     alert(`Kurzanleitung:
 1) Phantom verbinden
-2) Intent senden → QR für USDC-Zahlung
+2) Intent senden → QR oder Deep-Link für USDC-Zahlung
 3) Optional: Early-Claim (1 USDC) mit Signatur bestätigen`);
   });
 }
@@ -707,37 +647,21 @@ if (btnPresaleIntent){
       const j = await r.json().catch(()=>null);
       if (!r.ok || !j?.ok) throw new Error(j?.error || j?.detail || "Intent fehlgeschlagen");
 
-      // Nur QR: Solana-Pay lokal konstruieren (Owner bevorzugt, sonst ATA)
-      const recipient = STATE.deposit_owner || STATE.deposit_ata;
-      if (!recipient) throw new Error("Kein Deposit-Recipient verfügbar.");
-      const price = currentPriceUSDC();
-      const inpiEst = (Number.isFinite(price)&&price>0) ? Math.floor(usdc/price) : null;
-
-      const solanaPayUrl = buildSolanaPayUrl({
-        recipient,
-        amountUi: usdc,
-        splToken: STATE.usdc_mint || CFG.USDC_MINT,
-        label: "INPI Presale",
-        message: inpiEst ? `~${inpiEst.toLocaleString("de-DE")} INPI @ ${price.toFixed(6)} USDC/INPI` : "INPI Presale",
-        memo: `intent:${pubkey.toBase58()}`,
-        reference: pubkey.toBase58()
-      });
+      // QR + Deep-Links für die USDC-Zahlung
+      const contrib = j?.qr_contribute || {};
+      lastDeepLinks.contribute = contrib;
+      const qrUrl = contrib.qr_url || j?.qr_url || null;
 
       if (payArea) payArea.style.display="block";
-      if (qrContrib){ qrContrib.src = makeQrUrl(solanaPayUrl); qrContrib.style.display="block"; }
+      if (qrContrib && qrUrl){ qrContrib.src = qrUrl; qrContrib.style.display="block"; }
+      if (aPhantom && contrib.phantom_universal_url){ aPhantom.href = contrib.phantom_universal_url; aPhantom.style.display="inline-block"; }
+      if (aSolflare && contrib.solflare_universal_url){ aSolflare.href = contrib.solflare_universal_url; aSolflare.style.display="inline-block"; }
 
       if (intentMsg){
         intentMsg.textContent="";
-        const p1=document.createElement("p"); p1.textContent=`✅ Intent registriert. Scanne den QR und sende ${usdc} USDC (SPL-USDC).`;
-        intentMsg.appendChild(p1);
-        if (inpiEst){
-          const pInfo=document.createElement("p"); pInfo.className="muted";
-          pInfo.textContent = `Erwartet ~ ${inpiEst.toLocaleString("de-DE")} INPI @ ${price.toFixed(6)} USDC/INPI.`;
-          intentMsg.appendChild(pInfo);
-        }
-        const p2=document.createElement("p"); p2.textContent=`Optional: unten Early-Claim (1 USDC Fee) für sofortige Gutschrift.`;
-        intentMsg.appendChild(p2);
-        setBonusNote();
+        const p1=document.createElement("p"); p1.textContent=`✅ Intent registriert. Bitte ${usdc} USDC via QR/Link senden (SPL-USDC).`;
+        const p2=document.createElement("p"); p2.textContent=`Optional: Nutze unten den Early-Claim (1 USDC Fee) für sofortige Gutschrift.`;
+        intentMsg.appendChild(p1); intentMsg.appendChild(p2); setBonusNote();
       }
 
       await refreshStatus();
@@ -753,24 +677,23 @@ async function startEarlyFlow(){
   if (!STATE.early.enabled) return alert("Early-Claim ist derzeit deaktiviert.");
   try{
     earlyArea && (earlyArea.style.display = "block");
-    if (earlyMsg) earlyMsg.textContent="Erzeuge QR …";
-
-    const amount = STATE.early.flat_usdc || 1;
-    const recipient = STATE.early.fee_dest_wallet || STATE.deposit_owner || STATE.deposit_ata;
-    if (!recipient) throw new Error("Kein Ziel für Early-Claim Fee konfiguriert.");
-
-    const solanaPayUrl = buildSolanaPayUrl({
-      recipient,
-      amountUi: amount,
-      splToken: STATE.usdc_mint || CFG.USDC_MINT,
-      label: "INPI Early Claim",
-      message: "Fee für sofortige Gutschrift",
-      memo: `early:${pubkey.toBase58()}`,
-      reference: pubkey.toBase58()
+    if (earlyMsg) earlyMsg.textContent="Erzeuge Solana-Pay Link …";
+    const r = await fetch(`${CFG.API_BASE}/claim/early-intent`, {
+      method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
+      body: JSON.stringify({ wallet: pubkey.toBase58() })
     });
+    const j = await r.json().catch(()=>null);
+    if (!r.ok || !j?.ok) throw new Error(j?.error || "Early-Intent fehlgeschlagen");
 
-    if (qrClaimNow){ qrClaimNow.src = makeQrUrl(solanaPayUrl); qrClaimNow.style.display="block"; }
-    if (earlyMsg) earlyMsg.textContent = `Sende ${amount} USDC (QR). Danach unten die Transaktions-Signatur eintragen und bestätigen.`;
+    const qrUrl = j.qr_url || null;
+    lastDeepLinks.claimNow = {
+      solana_pay_url: j.solana_pay_url || null,
+      phantom_universal_url: j.solana_pay_url ? `https://phantom.app/ul/v1/solana-pay?link=${encodeURIComponent(j.solana_pay_url)}` : null,
+      solflare_universal_url: j.solana_pay_url ? `https://solflare.com/ul/v1/solana-pay?link=${encodeURIComponent(j.solana_pay_url)}` : null
+    };
+
+    if (qrClaimNow && qrUrl) { qrClaimNow.src = qrUrl; qrClaimNow.style.display="block"; }
+    if (earlyMsg) earlyMsg.textContent = `Sende ${STATE.early.flat_usdc} USDC (QR oder Link). Danach unten die Transaktions-Signatur eintragen und bestätigen.`;
   }catch(e){ console.error(e); alert(e?.message||e); }
 }
 async function confirmEarlyFee(){
@@ -790,13 +713,18 @@ async function confirmEarlyFee(){
   }catch(e){ console.error(e); alert(e?.message||e); if (earlyMsg) earlyMsg.textContent="Fehler bei der Bestätigung."; }
 }
 
-/* ---------- Base58 (encode) ---------- */
+/* ---------- Base58 (encode)  — BUGFIX: Schleifenabbruch ---------- */
 const B58_ALPH = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 function bs58Encode(bytes){
   if (!(bytes&&bytes.length)) return "";
   let zeros=0; while(zeros<bytes.length && bytes[zeros]===0) zeros++;
   let n=0n; for (const b of bytes) n = (n<<8n) + BigInt(b);
-  let out=""; while(n>0n){ const rem=Number(n%58n); out = B58_ALPH[rem]+out; n = n/58n; }
+  let out=""; 
+  while(n>0n){ 
+    const rem=Number(n%58n); 
+    out = B58_ALPH[rem]+out; 
+    n = n/58n;                  // <<<< wichtig (fix)
+  }
   for (let i=0;i<zeros;i++) out="1"+out;
   return out || "1".repeat(zeros);
 }
