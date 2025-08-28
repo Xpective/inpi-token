@@ -1,11 +1,11 @@
 /* ===========================================
    Inpinity Token – Frontend (Phantom-first)
-   Pfad: /public/token/app.js
+   Pfad: /pages/token/app.js
    =========================================== */
 
 /* ==================== KONFIG ==================== */
 const CFG = {
-  // Wird ggf. dynamisch via /public/app-cfg überschrieben
+  // Wird ggf. dynamisch via ./app-cfg.json überschrieben
   RPC: "https://api.mainnet-beta.solana.com",
 
   INPI_MINT: "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1",
@@ -13,11 +13,10 @@ const CFG = {
   API_BASE: "https://inpinity.online/api/token",
 
   // Rabatt & NFT-Gate
-  DISCOUNT_BPS_DEFAULT: 1000, // = 10%
-  // Wenn dieses NFT im Wallet gehalten wird, gilt Rabatt
+  DISCOUNT_BPS_DEFAULT: 1000, // 10 %
   GATE_NFT_MINT: "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ",
 
-  // Preis-Fallbacks (falls API mal nicht antwortet)
+  // Preis-Fallbacks
   PRICE_WITHOUT_NFT_FALLBACK: 0.00031415,
   PRICE_WITH_NFT_FALLBACK:    0.000282735, // 10% Rabatt
 
@@ -25,7 +24,7 @@ const CFG = {
   DEPOSIT_USDC_ATA_FALLBACK:  "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6",
   DEPOSIT_OWNER_FALLBACK: null,
 
-  // Presale-Caps (werden aus /public/app-cfg übernommen, falls vorhanden)
+  // Presale-Caps
   PRESALE_MIN_USDC_FALLBACK: null,
   PRESALE_MAX_USDC_FALLBACK: null,
 
@@ -92,10 +91,10 @@ function ensureWeb3(){
   });
 }
 
-/* ---------- /public/app-cfg laden (optional) ---------- */
+/* ---------- ./app-cfg.json laden (optional) ---------- */
 async function loadPublicAppCfg(){
   try{
-    const r = await fetch("/public/app-cfg", { headers:{accept:"application/json"} });
+    const r = await fetch("./app-cfg.json", { headers:{accept:"application/json"} });
     if (!r.ok) return;
     const c = await r.json();
 
@@ -141,9 +140,9 @@ async function loadPublicAppCfg(){
       if (Number.isFinite(v) && v>0) CFG.TGE_TS_FALLBACK = v;
     }
 
-    // Airdrop-Bonus
+    // Airdrop-Bonus (BUGFIX: korrektes Feld lesen)
     if (c?.AIRDROP_BONUS_BPS !== undefined) {
-      const v = Number(c.AIRDROP_BPS);
+      const v = Number(c.AIRDROP_BONUS_BPS);
       if (Number.isFinite(v) && v>=0) CFG.AIRDROP_BONUS_BPS_FALLBACK = v;
     }
 
@@ -310,20 +309,16 @@ function updateIntentAvailability(){
 
 /* ==================== INIT ==================== */
 async function init(){
-  // 0) Falls vorhanden, app-cfg einlesen (setzt Defaults dynamisch)
   await loadPublicAppCfg();
 
-  // 1) web3.js sicherstellen
   const okWeb3 = await ensureWeb3();
   if (!okWeb3) {
     alert("Fehler: web3.js konnte nicht geladen werden. Bitte Seite neu laden.");
     return;
   }
 
-  // 2) API-Status laden
   await refreshStatus();
 
-  // 3) Verbindung vorbereiten
   if (!STATE.rpc_url) STATE.rpc_url = CFG.RPC;
   if (!connection || currentRpcUrl !== STATE.rpc_url){
     connection = new Connection(STATE.rpc_url, "confirmed");
@@ -336,7 +331,6 @@ async function init(){
   if (inpAmount && STATE.presale_max_usdc != null) inpAmount.max = String(STATE.presale_max_usdc);
   if (inpAmount && !inpAmount.step) inpAmount.step = "0.000001";
 
-  // 4) Phantom Provider erkennen + Connect-Button
   provider = getPhantomProvider();
   if (provider?.isPhantom){
     try{
@@ -424,14 +418,12 @@ async function refreshStatus(){
     const presale = Number(j?.presale_price_usdc);
     const discBps = Number(j?.discount_bps ?? CFG.DISCOUNT_BPS_DEFAULT);
 
-    // Ohne NFT: entweder explizit oder Presale
     if ("price_without_nft_usdc" in (j||{})) {
       STATE.price_without_nft_usdc = Number(j.price_without_nft_usdc) || null;
     } else if (Number.isFinite(presale)) {
       STATE.price_without_nft_usdc = presale;
     }
 
-    // Mit NFT: explizit oder Presale - Discount
     if ("price_with_nft_usdc" in (j||{})) {
       STATE.price_with_nft_usdc = Number(j.price_with_nft_usdc) || null;
     } else if (Number.isFinite(presale)) {
@@ -439,7 +431,6 @@ async function refreshStatus(){
       STATE.price_with_nft_usdc = Math.round(withNft * 1e6) / 1e6;
     }
 
-    // Fallback falls API gar nichts liefert
     if (STATE.price_with_nft_usdc==null && STATE.price_without_nft_usdc==null){
       STATE.price_without_nft_usdc = CFG.PRICE_WITHOUT_NFT_FALLBACK;
       STATE.price_with_nft_usdc    = CFG.PRICE_WITH_NFT_FALLBACK;
@@ -478,7 +469,7 @@ async function refreshStatus(){
     updatePriceRow(); updateIntentAvailability(); setBonusNote(); renderTokenomics(STATE.supply_total, STATE.dist_bps);
   } catch (e){
     console.error(e);
-    // harte Fallbacks aus CFG
+    // harte Fallbacks
     STATE.rpc_url=CFG.RPC;
     STATE.inpi_mint=CFG.INPI_MINT;
     STATE.usdc_mint=CFG.USDC_MINT;
@@ -516,7 +507,6 @@ function numOr(def, maybe){ const n=Number(maybe); return Number.isFinite(n)? n 
 async function checkNftGateFallback(){
   try{
     if (!pubkey || !connection || !CFG.GATE_NFT_MINT) return false;
-    // rate-limit (max. 1x pro 30s)
     const now = Date.now();
     if (now - lastGateCheckTs < 30000) return STATE.gate_ok;
     lastGateCheckTs = now;
@@ -525,7 +515,6 @@ async function checkNftGateFallback(){
     const mint  = new window.solanaWeb3.PublicKey(CFG.GATE_NFT_MINT);
 
     const resp = await connection.getParsedTokenAccountsByOwner(owner, { mint });
-    // check uiAmount > 0
     for (const acc of (resp?.value || [])){
       const amt = acc?.account?.data?.parsed?.info?.tokenAmount;
       const ui = Number(amt?.uiAmount ?? 0);
@@ -551,11 +540,8 @@ async function refreshBalances(){
     if (usdcBal) usdcBal.textContent = fmt(usdc,2);
     if (inpiBal) inpiBal.textContent = fmt(inpi,0);
 
-    // gate_ok bevorzugt von API, ansonsten Fallback on-chain
     let gate = (j?.gate_ok === true);
-    if (!gate) {
-      gate = await checkNftGateFallback();
-    }
+    if (!gate) { gate = await checkNftGateFallback(); }
     STATE.gate_ok = !!gate;
 
     updatePriceRow(); updateIntentAvailability();
@@ -563,7 +549,6 @@ async function refreshBalances(){
     console.error(e);
     if (usdcBal) usdcBal.textContent="–";
     if (inpiBal) inpiBal.textContent="–";
-    // auch hier Fallback versuchen
     const gate = await checkNftGateFallback().catch(()=>false);
     STATE.gate_ok = !!gate;
     updatePriceRow(); updateIntentAvailability();
@@ -728,13 +713,18 @@ async function confirmEarlyFee(){
   }catch(e){ console.error(e); alert(e?.message||e); if (earlyMsg) earlyMsg.textContent="Fehler bei der Bestätigung."; }
 }
 
-/* ---------- Base58 (encode) ---------- */
+/* ---------- Base58 (encode)  — BUGFIX: Schleifenabbruch ---------- */
 const B58_ALPH = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 function bs58Encode(bytes){
   if (!(bytes&&bytes.length)) return "";
   let zeros=0; while(zeros<bytes.length && bytes[zeros]===0) zeros++;
   let n=0n; for (const b of bytes) n = (n<<8n) + BigInt(b);
-  let out=""; while(n>0n){ const rem=Number(n%58n); out = B58_ALPH[rem]+out; }
+  let out=""; 
+  while(n>0n){ 
+    const rem=Number(n%58n); 
+    out = B58_ALPH[rem]+out; 
+    n = n/58n;                  // <<<< wichtig (fix)
+  }
   for (let i=0;i<zeros;i++) out="1"+out;
   return out || "1".repeat(zeros);
 }
