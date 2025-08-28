@@ -121,68 +121,91 @@ async function hasNft(env: Env, owner: string, mint?: string): Promise<boolean> 
   return amt > 0;
 }
 
-/* ---------- /token Proxy mit HTML-Rewrite ---------- */
+/* ---------- /token Proxy mit HTML-Rewrite + Asset-Fallback ---------- */
 async function proxyPages(env: Env, req: Request, url: URL): Promise<Response> {
   // /token → /token/ (für relative Pfade im HTML)
   if (url.pathname === "/token" && req.method === "GET")
     return Response.redirect(url.origin + "/token/", 301);
 
-  const upstreamOrigin = new URL(env.PAGES_UPSTREAM).origin;
+  const isAsset = (p: string) =>
+    /\.(?:js|css|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|map|json)$/.test(p);
 
-  // NICHT kürzen: Upstream liefert unter /token/* (deine Pages-Struktur)
-  const upstreamPath = url.pathname;
-  const target = new URL(upstreamPath + url.search, env.PAGES_UPSTREAM);
+  // Wir probieren beide Varianten:
+  //  1) exakter Pfad (mit /token)
+  //  2) Root (ohne /token)
+  const pathVariants = [
+    url.pathname,                         // /token/...
+    url.pathname.replace(/^\/token/, ""), // /...
+  ];
 
-  const r = await fetch(target.toString(), {
-    method: req.method,
-    headers: req.headers,
-    body: ["GET","HEAD"].includes(req.method) ? undefined : await req.arrayBuffer(),
-    redirect: "manual"
-  });
+  let lastErr: unknown = null;
 
-  // Interne Redirects umbiegen
-  if (r.status >= 300 && r.status < 400) {
-    const loc = r.headers.get("location");
-    if (loc && loc.startsWith("/")) {
+  for (const p of pathVariants) {
+    try {
+      const target = new URL(p + url.search, env.PAGES_UPSTREAM);
+      const r = await fetch(target.toString(), {
+        method: req.method,
+        headers: req.headers,
+        body: ["GET","HEAD"].includes(req.method) ? undefined : await req.arrayBuffer(),
+        redirect: "manual"
+      });
+
+      // Redirects so umbiegen, dass der Client unter /token/ bleibt
+      if (r.status >= 300 && r.status < 400) {
+        const loc = r.headers.get("location");
+        if (loc && loc.startsWith("/")) {
+          const h = new Headers(r.headers);
+          const newLoc = loc.startsWith("/token") ? loc : "/token" + loc;
+          h.set("location", newLoc);
+          return new Response(null, { status: r.status, headers: h });
+        }
+        return r;
+      }
+
+      const ct = r.headers.get("content-type") || "";
       const h = new Headers(r.headers);
-      // auf /token/... biegen
-      h.set("location", "/token" + (loc.startsWith("/token") ? loc.slice(6) : loc));
-      return new Response(null, { status: r.status, headers: h });
+
+      // Statische Assets: wenn Upstream HTML (SPA-Fallback) liefert → nächste Variante probieren
+      if (r.ok && isAsset(p)) {
+        if (ct.includes("text/html")) continue;
+        h.set("cache-control", "public, max-age=600");
+        return new Response(r.body, { status: r.status, headers: h });
+      }
+
+      // HTML: Umschreiben auf /token/
+      if (ct.includes("text/html")) {
+        let html = await r.text();
+
+        // 1) absolute Upstream-Domain raus, damit root-absolute erkannt werden
+        const upstreamOrigin = new URL(env.PAGES_UPSTREAM).origin;
+        const esc = upstreamOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        html = html.replace(new RegExp(esc, "g"), "");
+
+        // 2) root-absolute Pfade auf /token/ präfixen (wenn nicht schon /token/)
+        html = html
+          .replace(/(href|src|action)=["']\/(?!token\/)/g, '$1="/token/')
+          .replace(/data-(href|src)=["']\/(?!token\/)/g, 'data-$1="/token/');
+
+        // 3) <base href="/token/"> ergänzen, falls nicht vorhanden
+        if (html.includes("<head") && !/base\s+href=/i.test(html)) {
+          html = html.replace("<head>", '<head><base href="/token/">');
+        }
+
+        h.set("content-type", "text/html; charset=utf-8");
+        h.delete("content-length");
+        return new Response(html, { status: r.status, headers: h });
+      }
+
+      // alles andere durchreichen
+      return new Response(r.body, { status: r.status, headers: h });
+    } catch (e) {
+      lastErr = e;
+      continue;
     }
-    return r;
   }
 
-  const ct = r.headers.get("content-type") || "";
-  const h = new Headers(r.headers);
-
-  // Cache für statische Assets
-  if (r.ok && /\.(?:js|css|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|map|json)$/.test(upstreamPath)) {
-    h.set("cache-control", "public, max-age=600");
-  }
-
-  if (ct.includes("text/html")) {
-    let html = await r.text();
-
-    // 1) Absolute Domain → entfernen, damit wir root-absolute erkennen
-    const esc = upstreamOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    html = html.replace(new RegExp(esc, "g"), "");
-
-    // 2) Root-absolute Pfade präfixen, wenn nicht schon /token/
-    html = html
-      .replace(/(href|src|action)=["']\/(?!token\/)/g, '$1="/token/')
-      .replace(/data-(href|src)=["']\/(?!token\/)/g, 'data-$1="/token/');
-
-    // 3) <base> setzen, falls fehlt
-    if (html.includes("<head") && !/base\s+href=/i.test(html)) {
-      html = html.replace("<head>", '<head><base href="/token/">');
-    }
-
-    h.set("content-type", "text/html; charset=utf-8");
-    h.delete("content-length");
-    return new Response(html, { status: r.status, headers: h });
-  }
-
-  return new Response(r.body, { status: r.status, headers: h });
+  // beide Varianten fehlgeschlagen
+  return new Response("Upstream not reachable", { status: 502 });
 }
 
 /* ------------------------ worker ------------------------ */
