@@ -96,6 +96,31 @@ function matchOrigin(origin: string, patterns: string[]): boolean {
   }
 }
 
+const ALLOWED_RPC = new Set([
+  "getBalance",
+  "getTokenAccountsByOwner",
+  "getParsedTokenAccountsByOwner",
+  "getSignaturesForAddress",
+  "getTransaction",
+]);
+
+async function handleRpcProxy(env: Env, req: Request, corsHeaders: Record<string,string>) {
+  const body = await req.json().catch(()=>null);
+  if (!body || typeof body.method !== "string") {
+    return JSON_OK({ error: "invalid request" }, 400, corsHeaders);
+  }
+  if (!ALLOWED_RPC.has(body.method)) {
+    return JSON_OK({ error: "method not allowed" }, 403, corsHeaders);
+  }
+  const url = primaryRpc(env.SOLANA_RPC);
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "content-type":"application/json" },
+    body: JSON.stringify(body)
+  });
+  return new Response(await r.text(), { status: r.status, headers: { "content-type":"application/json", ...corsHeaders } });
+}
+
 const buildCors = (env: Env) => {
   const patterns = (env.ALLOWED_ORIGINS || "*").split(",").map(s => s.trim()).filter(Boolean);
   return (originHeader?: string | null) => {
