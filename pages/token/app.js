@@ -1,5 +1,6 @@
+<script>
 /* ===========================================
-   Inpinity Token – Frontend (Nur-QR, keine Links, mit Optimistic-QR)
+   Inpinity Token – Frontend (Nur-QR, keine Links, mit Optimistic-QR + Popup)
    Pfad: /pages/token/app.js
    =========================================== */
 
@@ -315,8 +316,49 @@ function updateIntentAvailability(){
   }
 }
 
+/* ==================== POPUP-Flow: Öffnen + Cache + Messaging ==================== */
+let intentPopup = null;
+function openIntentPopup(){
+  if (!intentPopup || intentPopup.closed){
+    // Gleiche Origin/Route! (HTML liegt unter /pages/token/)
+    intentPopup = window.open("/pages/token/intent-popup.html", "inpi_intent", "width=420,height=640,noopener");
+  }
+  return intentPopup;
+}
+function safePostToPopup(msg){
+  try { if (intentPopup && !intentPopup.closed) intentPopup.postMessage(msg, location.origin); } catch {}
+}
+function saveIntentCache(obj){
+  const payload = { ...obj, ts: Date.now() };
+  try { localStorage.setItem("inpi:lastIntent", JSON.stringify(payload)); } catch {}
+  try { sessionStorage.setItem("inpi:lastIntent", JSON.stringify(payload)); } catch {}
+}
+function loadIntentCache(){
+  try {
+    const a = sessionStorage.getItem("inpi:lastIntent") || localStorage.getItem("inpi:lastIntent");
+    if (!a) return null;
+    const j = JSON.parse(a);
+    // 30min TTL
+    if (Date.now() - (j.ts||0) > 30*60*1000) return null;
+    return j;
+  } catch { return null; }
+}
+// Popup fragt nach Mount nach "hydrate"
+window.addEventListener("message", (ev)=>{
+  if (ev.origin !== location.origin) return;
+  if (ev.data?.type === "popup_ready"){
+    const cached = loadIntentCache();
+    if (cached) safePostToPopup({ type:"hydrate", data: cached });
+  }
+});
+
 /* ==================== INIT ==================== */
 async function init(){
+  // Form-Submit verhindern (Enter → kein Reload)
+  document.querySelectorAll("form").forEach(f=>{
+    f.addEventListener("submit",(e)=>{ e.preventDefault(); return false; });
+  });
+
   await loadPublicAppCfg();
 
   const okWeb3 = await ensureWeb3();
@@ -519,13 +561,14 @@ function numOr(def, maybe){ const n=Number(maybe); return Number.isFinite(n)? n 
 async function getTokenUiAmountOnChain(ownerStr, mintStr){
   if (!connection) return 0;
   let total = 0;
-
   try{
     const owner = new window.solanaWeb3.PublicKey(ownerStr);
     const mint  = new window.solanaWeb3.PublicKey(mintStr);
 
     // 1) Direkt per mint (klassisches SPL-Token-Programm)
-    const res1 = await connection.getParsedTokenAccountsByOwner(owner, { mint });
+    const res1 = await connection.getParsedTokenAccountsByOwner(
+      owner, { mint }, { commitment: "confirmed" }
+    );
     for (const v of (res1?.value||[])){
       const amt = v?.account?.data?.parsed?.info?.tokenAmount;
       total += Number(amt?.uiAmount ?? 0);
@@ -534,7 +577,9 @@ async function getTokenUiAmountOnChain(ownerStr, mintStr){
 
     // 2) Token-2022: über programId sammeln und nach mint filtern
     const prog2022 = new window.solanaWeb3.PublicKey(CFG.TOKEN_2022_PROG);
-    const res2 = await connection.getParsedTokenAccountsByOwner(owner, { programId: prog2022 });
+    const res2 = await connection.getParsedTokenAccountsByOwner(
+      owner, { programId: prog2022 }, { commitment: "confirmed" }
+    );
     for (const v of (res2?.value||[])){
       const info = v?.account?.data?.parsed?.info;
       if (info?.mint === mintStr){
@@ -544,7 +589,6 @@ async function getTokenUiAmountOnChain(ownerStr, mintStr){
     return total;
   } catch { return 0; }
 }
-
 async function hasNftOnChain(ownerStr, nftMintStr){
   if (!ownerStr || !nftMintStr) return false;
   const amt = await getTokenUiAmountOnChain(ownerStr, nftMintStr).catch(()=>0);
@@ -565,23 +609,29 @@ async function refreshBalances(){
 
     // Falls API kein Zahlwert liefert → on-chain fallback
     if (!Number.isFinite(usdc) || !Number.isFinite(inpi)) {
-      usdc = await getTokenUiAmountOnChain(pubkey.toBase58(), CFG.USDC_MINT);
-      inpi = await getTokenUiAmountOnChain(pubkey.toBase58(), CFG.INPI_MINT);
+      const usdcMint = STATE.usdc_mint || CFG.USDC_MINT;
+      const inpiMint = STATE.inpi_mint || CFG.INPI_MINT;
+      usdc = await getTokenUiAmountOnChain(pubkey.toBase58(), usdcMint);
+      inpi = await getTokenUiAmountOnChain(pubkey.toBase58(), inpiMint);
     }
 
     if (usdcBal) usdcBal.textContent = fmt(usdc,2);
     if (inpiBal) inpiBal.textContent = fmt(inpi,0);
 
     let gate = (j?.gate_ok === true);
-    if (!gate) { gate = await hasNftOnChain(pubkey.toBase58(), CFG.GATE_NFT_MINT); }
+    if (!gate) {
+      gate = await hasNftOnChain(pubkey.toBase58(), CFG.GATE_NFT_MINT);
+    }
     STATE.gate_ok = !!gate;
 
     updatePriceRow(); updateIntentAvailability();
     if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
   } catch(e){
     console.warn("API Balances fail → on-chain fallback:", e?.message||e);
-    const usdc = await getTokenUiAmountOnChain(pubkey.toBase58(), CFG.USDC_MINT);
-    const inpi = await getTokenUiAmountOnChain(pubkey.toBase58(), CFG.INPI_MINT);
+    const usdcMint = STATE.usdc_mint || CFG.USDC_MINT;
+    const inpiMint = STATE.inpi_mint || CFG.INPI_MINT;
+    const usdc = await getTokenUiAmountOnChain(pubkey.toBase58(), usdcMint);
+    const inpi = await getTokenUiAmountOnChain(pubkey.toBase58(), inpiMint);
     if (usdcBal) usdcBal.textContent = fmt(usdc,2);
     if (inpiBal) inpiBal.textContent = fmt(inpi,0);
     const gate = await hasNftOnChain(pubkey.toBase58(), CFG.GATE_NFT_MINT).catch(()=>false);
@@ -747,6 +797,9 @@ if (btnPresaleIntent){
     if(!pubkey) return alert("Bitte zuerst mit Phantom verbinden.");
     if (STATE.presale_state==="closed") return alert("Presale ist geschlossen.");
 
+    // Popup synchron öffnen (nie nach einem await!)
+    const w = openIntentPopup();
+
     const vRaw = Number(inpAmount?.value || "0");
     if (!vRaw||vRaw<=0) return alert(`Bitte gültigen Betrag eingeben (${STATE.input_mode}).`);
 
@@ -766,11 +819,22 @@ if (btnPresaleIntent){
         const price = currentPriceUSDC();
         const usdcAmount = STATE.input_mode==="USDC" ? round6(vRaw) : round6((price||0)*vRaw);
         const memoLocal = `INPI-presale-pre-${randomRefHex(8)}`;
-        localPayURL = buildSolPayURL(recipient, usdcAmount, STATE.usdc_mint || CFG.USDC_MINT, memoLocal);
+        const usdcMint = STATE.usdc_mint || CFG.USDC_MINT;
+        localPayURL = buildSolPayURL(recipient, usdcAmount, usdcMint, memoLocal);
         if (payArea) payArea.style.display="block";
         const qre = el("inpi-qr");
         if (qre && localPayURL){ await drawQR(qre, localPayURL, 240); }
         if (intentMsg) intentMsg.textContent = "QR bereit – Betrag wird serverseitig bestätigt …";
+
+        // → Popup + Cache
+        const cache = {
+          wallet: pubkey.toBase58(),
+          mode: STATE.input_mode,
+          amount: vRaw,
+          optimisticQR: localPayURL
+        };
+        saveIntentCache(cache);
+        safePostToPopup({ type:"optimistic_qr", url: localPayURL, cache });
       }
     } catch {}
 
@@ -826,6 +890,22 @@ if (btnPresaleIntent){
           intentMsg.appendChild(p2);
         }
         setBonusNote();
+      }
+
+      // → Popup + Cache Update
+      if (finalPayLink){
+        const cache = {
+          wallet: pubkey.toBase58(),
+          mode: STATE.input_mode,
+          amount: vRaw,
+          optimisticQR: localPayURL || null,
+          finalQR: finalPayLink
+        };
+        saveIntentCache(cache);
+        safePostToPopup({ type:"final_qr", url: finalPayLink, cache });
+      }
+      if (fee && fee.solana_pay_url){
+        safePostToPopup({ type:"fee_qr", url: fee.solana_pay_url });
       }
 
       if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
@@ -917,3 +997,4 @@ function bs58Encode(bytes){
 
 /* ---------- Boot ---------- */
 window.addEventListener("DOMContentLoaded", ()=>{ init().catch(console.error); });
+</script>
