@@ -1,9 +1,9 @@
 export interface Env {
   PAGES_UPSTREAM: string;           // z.B. https://inpi-token.pages.dev
-  SOLANA_RPC: string;               // z.B. https://rpc.helius.xyz/?api-key=...
+  SOLANA_RPC: string;               // einzelne URL ODER CSV: https://rpc.helius.xyz/?api-key=...,https://api.mainnet-beta.solana.com
   USDC_MINT: string;
   INPI_MINT: string;
-  CREATOR: string;                  // Owner/Empfänger der USDC (Ziel-Pubkey, kein ATA)
+  CREATOR: string;                  // Owner/Empfänger (Ziel-Pubkey, kein ATA)
   PRESALE_STATE?: string;           // "open" | "pre" | "closed"
   PRESALE_PRICE_USDC?: string;      // Basispreis pro INPI in USDC
   PUBLIC_PRICE_USDC?: string;
@@ -37,8 +37,7 @@ const json = (obj: any, status = 200, extra: Record<string,string> = {}) =>
   });
 
 const makeCORS = (env: Env) => {
-  const list = (env.ALLOWED_ORIGINS || "*")
-    .split(",").map(s=>s.trim()).filter(Boolean);
+  const list = (env.ALLOWED_ORIGINS || "*").split(",").map(s=>s.trim()).filter(Boolean);
   const allowAll = list.includes("*");
   return (origin?: string|null) => {
     const allow = allowAll ? "*" : (origin && list.includes(origin) ? origin : (list[0] || "*"));
@@ -73,27 +72,48 @@ const solanaPay = (
   return u.toString();
 };
 
+const splitRpc = (env: Env) =>
+  String(env.SOLANA_RPC || "")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
+
+/** JSON sicher parsen */
+const safeJson = (t: string) => {
+  try { return JSON.parse(t); } catch { return null; }
+};
+
+/** RPC mit Failover (unterstützt CSV in SOLANA_RPC) */
 async function rpc(env: Env, method: string, params: any[]) {
-  const r = await fetch(env.SOLANA_RPC, {
-    method:"POST",
-    headers:{ "content-type":"application/json" },
-    body: JSON.stringify({ jsonrpc:"2.0", id:1, method, params })
-  });
-  const t = await r.text();
-  let j: any = {};
-  try { j = JSON.parse(t); } catch { throw new Error("RPC parse error"); }
-  if (j?.error) throw new Error(`${j.error.code}: ${j.error.message}`);
-  return j.result;
+  const endpoints = splitRpc(env);
+  if (!endpoints.length) throw new Error("SOLANA_RPC not configured");
+
+  let lastErr: any = null;
+  for (const ep of endpoints) {
+    try {
+      const r = await fetch(ep, {
+        method:"POST",
+        headers:{ "content-type":"application/json" },
+        body: JSON.stringify({ jsonrpc:"2.0", id:1, method, params })
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      if (j?.error) throw new Error(`${j.error.code}: ${j.error.message}`);
+      return j.result;
+    } catch (e) { lastErr = e; }
+  }
+  throw new Error(`RPC failed on all endpoints: ${String(lastErr)}`);
 }
 
 /**
- * Streng nach Mint: klappt bei klassischem SPL.
- * Fallback: Token-2022 → per programId und manuell nach mint filtern.
+ * Balances:
+ * 1) klassisches SPL via mint
+ * 2) Token-2022 via programId + Filter auf mint
  */
 async function getTokenUiAmount(env: Env, owner: string, mint: string) {
   let total = 0;
 
-  // 1) Direkte Mint-Filterung
+  // 1) Direkte Mint-Filterung (klassisches SPL)
   try {
     const res1 = await rpc(env, "getParsedTokenAccountsByOwner", [
       owner,
@@ -104,7 +124,7 @@ async function getTokenUiAmount(env: Env, owner: string, mint: string) {
       total += Number(v?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0);
     }
     if (total > 0) return total;
-  } catch {/* ignore and try 2022 fallback */}
+  } catch {/* ignore */}
 
   // 2) Token-2022 Fallback via programId
   try {
@@ -129,15 +149,15 @@ async function hasNft(env: Env, owner: string, gateMint?: string) {
 }
 
 /* -------- pages proxy (mit /token Prefix-Strip) -------- */
-/* -------- pages proxy (ohne Strip, spiegelt Pfade 1:1) -------- */
 async function proxyPages(env: Env, req: Request, url: URL) {
-  // Schönere URL /token → /token/
+  // /token → /token/ (schöne URLs)
   if (url.pathname === "/token" && req.method === "GET") {
     return Response.redirect(url.origin + "/token/", 301);
   }
-
-  // Upstream = exakt gleicher Pfad wie angefragt
-  const upstreamUrl = new URL(url.pathname + url.search, env.PAGES_UPSTREAM);
+  // Strip genau 1x '/token'
+  const subpath = url.pathname.replace(/^\/token(\/|$)/, "/");
+  const upstreamBase = new URL(env.PAGES_UPSTREAM);
+  const upstreamUrl = new URL(subpath + url.search, upstreamBase);
 
   const reqHeaders = new Headers(req.headers);
   reqHeaders.delete("host");
@@ -149,16 +169,13 @@ async function proxyPages(env: Env, req: Request, url: URL) {
   });
 
   const h = new Headers(r.headers);
-  // leichte Caches für statische Assets
-  if (r.ok && /\.(js|css|png|jpg|svg|json|webp|woff2?)$/i.test(url.pathname)) {
+  if (r.ok && /\.(js|css|png|jpg|svg|json|webp|woff2?)$/i.test(subpath)) {
     h.set("cache-control","public, max-age=600");
   } else {
     h.set("cache-control","no-store");
   }
-  // Sicherheitsheader
   h.set("x-content-type-options","nosniff");
   h.set("referrer-policy","no-referrer");
-
   return new Response(r.body, { status: r.status, headers: h });
 }
 
@@ -181,7 +198,7 @@ export default {
       const discount_bps = parseInt(env.DISCOUNT_BPS || "1000", 10);
       const tgeTs = env.TGE_TS ? parseInt(env.TGE_TS, 10) : null;
 
-      // Wichtig: gib die Proxy-RPC-URL aus, nicht die Upstream-URL
+      // WICHTIG: Proxy-RPC (CSP-freundlich)
       const rpcProxy = `${url.origin}/api/token/rpc`;
 
       return json({
@@ -202,7 +219,7 @@ export default {
           flat_usdc: parseFloat(env.EARLY_FLAT_USDC || "1"),
           fee_dest_wallet: env.CREATOR || null
         },
-        airdrop_bonus_bps: env.AIRDROP_BONUS_BPS ? parseInt(env.AIRDROP_BONUS_BPS, 10) : 600,
+        airdrop_bonus_bps: env.AIRDROP_BONUS_BPS ? parseInt(env.AIRDROP_BPS as any, 10) : (env.AIRDROP_BONUS_BPS ? parseInt(env.AIRDROP_BONUS_BPS,10) : 600),
         // Tokenomics-Fallbacks
         supply_total: 3141592653,
         dist_presale_bps: 1000,
@@ -333,18 +350,30 @@ export default {
       return json({ ok:true, job_id }, 200, cors);
     }
 
-    /* --- API Passthrough: /api/token/rpc --- */
+    /* --- API: /api/token/rpc --- */
     if (url.pathname.endsWith("/api/token/rpc") && req.method === "POST") {
-      const body = await req.text();
-      const r = await fetch(env.SOLANA_RPC, {
-        method:"POST",
-        headers:{ "content-type":"application/json" },
-        body
-      });
-      return new Response(await r.text(), {
-        status: r.status,
-        headers: { "content-type":"application/json", ...cors }
-      });
+      const bodyTxt = await req.text();
+      const reqJson = safeJson(bodyTxt);
+      if (!reqJson || typeof reqJson !== "object") {
+        return json({ jsonrpc:"2.0", id:1, error:{ code:-32600, message:"Invalid Request" } }, 400, cors);
+      }
+      const id = reqJson.id ?? 1;
+      const method = reqJson.method;
+      const params = Array.isArray(reqJson.params) ? reqJson.params : [];
+
+      try {
+        const result = await rpc(env, method, params);
+        return new Response(JSON.stringify({ jsonrpc:"2.0", id, result }), {
+          status: 200,
+          headers: { "content-type":"application/json", ...cors }
+        });
+      } catch (e:any) {
+        return new Response(JSON.stringify({
+          jsonrpc:"2.0",
+          id,
+          error: { code: -32000, message: String(e?.message || e) }
+        }), { status: 200, headers: { "content-type":"application/json", ...cors }});
+      }
     }
 
     return json({ error: "not found" }, 404, cors);
