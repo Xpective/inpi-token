@@ -14,9 +14,7 @@
       if (s.startsWith("//")) return location.protocol + s;
       if (s.startsWith("/"))  return location.origin + s;
       return new URL(s, location.origin).toString();
-    }catch{
-      return location.origin + "/api/token/rpc";
-    }
+    }catch{ return location.origin + "/api/token/rpc"; }
   }
   function sameOrigin(u){
     try{ return new URL(u, location.href).origin === location.origin; }
@@ -26,9 +24,9 @@
     const fallback = location.origin + "/api/token/rpc";
     if (!u) return fallback;
     const s = String(u);
-    if (s.includes("api.mainnet-beta.solana.com")) return fallback; // nie direkt
+    if (s.includes("api.mainnet-beta.solana.com")) return fallback;   // nie direkt
     const abs = toAbsolute(s);
-    if (!sameOrigin(abs)) return fallback; // Fremd-Origin -> Proxy
+    if (!sameOrigin(abs)) return fallback;                            // Fremd-Origin -> Proxy
     return abs;
   }
 
@@ -48,16 +46,16 @@
   async function loadCfg(){
     const r = await fetch("./app-cfg.json?v="+Date.now());
     const c = await r.json();
-    CFG.API  = c.API_BASE;       // z.B. "/api/token"
+    CFG.API  = c.API_BASE;
     CFG.INPI = c.INPI_MINT;
     CFG.USDC = c.USDC_MINT;
     CFG.GATE = c.GATE_NFT_MINT || c.GATE_MINT || "";
 
-    // Explorer/Market Links (optional im DOM)
-    const lnTensor = el("lnTensor"); if (lnTensor) lnTensor.href = "https://www.tensor.trade/item/"+encodeURIComponent(CFG.GATE);
-    const lnME     = el("lnME");     if (lnME)     lnME.href     = "https://magiceden.io/item-details/"+encodeURIComponent(CFG.GATE);
-    const lnInpiSS = el("lnInpiSS"); if (lnInpiSS) lnInpiSS.href = "https://solscan.io/token/"+encodeURIComponent(CFG.INPI);
-    const lnUsdcSS = el("lnUsdcSS"); if (lnUsdcSS) lnUsdcSS.href = "https://solscan.io/token/"+encodeURIComponent(CFG.USDC);
+    // Links (optional)
+    const lnTensor = el("lnTensor"); if (lnTensor && CFG.GATE) lnTensor.href = "https://www.tensor.trade/item/"+encodeURIComponent(CFG.GATE);
+    const lnME     = el("lnME");     if (lnME && CFG.GATE)     lnME.href     = "https://magiceden.io/item-details/"+encodeURIComponent(CFG.GATE);
+    const lnInpiSS = el("lnInpiSS"); if (lnInpiSS && CFG.INPI) lnInpiSS.href = "https://solscan.io/token/"+encodeURIComponent(CFG.INPI);
+    const lnUsdcSS = el("lnUsdcSS"); if (lnUsdcSS && CFG.USDC) lnUsdcSS.href = "https://solscan.io/token/"+encodeURIComponent(CFG.USDC);
   }
 
   async function status(){
@@ -73,7 +71,7 @@
     STATE.min = j.presale_min_usdc ?? null;
     STATE.max = j.presale_max_usdc ?? null;
 
-    // Preise (mit/ohne NFT)
+    // Preise
     const priceWith = j.price_with_nft_usdc;
     const priceWo   = j.price_without_nft_usdc;
     if (Number.isFinite(priceWith) || Number.isFinite(priceWo)) {
@@ -167,22 +165,42 @@
     return null;
   }
 
-  // QR (Canvas-Lib oder Fallback <img>)
-  async function drawQR(canvasOrImg, text){
-    if (!canvasOrImg || !text) return;
-    if (window.QRCode?.toCanvas && canvasOrImg.tagName === "CANVAS"){
-      await window.QRCode.toCanvas(canvasOrImg, text, { width: 240, margin:1 });
+  // ===== QR (Canvas-Lib oder Fallback <img>) =====
+  async function drawQR(node, text){
+    if (!node || !text) return;
+    const hasLib = !!(window.QRCode && typeof window.QRCode.toCanvas === "function");
+
+    // bevorzugt Canvas, wenn Lib da
+    if (hasLib && node.tagName === "CANVAS"){
+      try{
+        await window.QRCode.toCanvas(node, text, { width: 240, margin:1 });
+        return;
+      }catch{/* fallthrough */}
+    }
+
+    // fallback: auf <img> ausweichen
+    const url = "https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=" + encodeURIComponent(text);
+
+    if (node.tagName === "IMG"){
+      node.src = url; node.alt = "QR";
       return;
     }
-    if (canvasOrImg.tagName === "IMG"){
-      canvasOrImg.src = "https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=" + encodeURIComponent(text);
-      canvasOrImg.alt = "QR";
+
+    // wenn es ein Canvas ist -> durch <img> ersetzen
+    if (node.tagName === "CANVAS"){
+      const img = document.createElement("img");
+      img.className = node.className || "qr";
+      img.width = 240; img.height = 240; img.alt = "QR";
+      img.src = url;
+      node.replaceWith(img);
       return;
     }
-    canvasOrImg.textContent = text;
+
+    // Notfall
+    node.textContent = text;
   }
 
-  // ======= On-chain helpers (SPL + Token-2022 Fallback) =======
+  // ===== On-chain helpers (SPL + Token-2022 Fallback) =====
   async function getTokenUiAmountOnChain(ownerStr, mintStr){
     if (!conn) return 0;
     try{
@@ -201,9 +219,7 @@
       const res2 = await conn.getParsedTokenAccountsByOwner(owner, { programId: prog2022 }, { commitment: "confirmed" });
       for (const v of (res2?.value||[])){
         const info = v?.account?.data?.parsed?.info;
-        if (info?.mint === mintStr){
-          total += Number(info?.tokenAmount?.uiAmount || 0);
-        }
+        if (info?.mint === mintStr) total += Number(info?.tokenAmount?.uiAmount || 0);
       }
       return total;
     } catch { return 0; }
@@ -214,13 +230,10 @@
     return amt > 0;
   }
 
-  // ======= Preiswahl (mit/ohne NFT) =======
+  // ===== Preiswahl (mit/ohne NFT) =====
   function currentPrice(){
-    const w  = STATE.pWith;
-    const wo = STATE.pWo;
-    return STATE.gate
-      ? (Number.isFinite(w)  ? w  : wo)
-      : (Number.isFinite(wo) ? wo : w);
+    const w  = STATE.pWith, wo = STATE.pWo;
+    return STATE.gate ? (Number.isFinite(w) ? w : wo) : (Number.isFinite(wo) ? wo : w);
   }
 
   function updateExpected(){
@@ -233,14 +246,14 @@
     expEl.textContent = mode==="USDC" ? `${fmt(v/p,0)} INPI` : `~ ${fmt(v*p,6)} USDC`;
   }
 
-  // ======= Balances + Gate (on-chain first, API fallback) =======
+  // ===== Balances + Gate (on-chain first, API fallback) =====
   async function refreshBalances(){
     if (!pubkey) return;
 
     const usdcNode = el("usdcBal") || el("usdc");
     const inpiNode = el("inpiBal") || el("inpi");
 
-    // 1) On-chain first
+    // 1) On-chain
     try{
       const usdcMint = STATE.usdc || CFG.USDC;
       const inpiMint = STATE.inpi || CFG.INPI;
@@ -259,11 +272,9 @@
       renderPrice();
       updateExpected();
       return;
-    } catch(e){
-      // API-Fallback
-    }
+    } catch {}
 
-    // 2) Fallback: API
+    // 2) Fallback API
     try{
       const url = `${CFG.API}/wallet/balances?wallet=${encodeURIComponent(pubkey.toBase58())}&t=${Date.now()}`;
       const r = await fetch(url, { headers:{accept:"application/json"}});
@@ -277,12 +288,10 @@
       STATE.gate = !!j?.gate_ok;
       renderPrice();
       updateExpected();
-    } catch(e){
-      // leise scheitern
-    }
+    } catch {}
   }
 
-  // ======= Intent Flow =======
+  // ===== Intent Flow =====
   async function onIntent(){
     if (!pubkey) return alert("Bitte Wallet verbinden.");
     if (STATE.presale==="closed") return alert("Presale ist geschlossen.");
@@ -300,7 +309,7 @@
     if (msg) msg.textContent = "Erzeuge QR …";
     if (payRow) payRow.style.display = "block";
 
-    // 1) Optimistischer QR (lokal)
+    // 1) Optimistic QR
     try{
       const recipient = STATE.deposit_owner || null;
       const price = currentPrice();
@@ -337,6 +346,7 @@
       const used = j.qr_contribute?.amount_usdc ?? body.amount_usdc ?? null;
       if (msg) msg.textContent = used!=null ? `✅ Intent registriert. Bitte ${used} USDC senden.` : "✅ Intent registriert.";
 
+      // Early-Fee optional
       if (j.qr_early_fee?.solana_pay_url){
         const earlyBox = el("early"); if (earlyBox) earlyBox.style.display = "block";
         const earRow = el("earRow");  if (earRow) earRow.style.display = "block";
@@ -349,7 +359,7 @@
     }
   }
 
-  // ======= Early flow =======
+  // ===== Early flow =====
   async function startEarly(){
     if (!pubkey) return alert("Bitte Wallet verbinden.");
     if (!STATE.early.enabled) return alert("Early-Claim ist deaktiviert.");
@@ -427,7 +437,7 @@
     await loadCfg();
     await status();
     if (window.solanaWeb3?.Connection && STATE.rpc){
-      const rpcUrl = toAbsolute(STATE.rpc); // absolut & same-origin
+      const rpcUrl = toAbsolute(STATE.rpc);
       conn = new window.solanaWeb3.Connection(rpcUrl, "confirmed");
     }
     await connectIfPossible();
