@@ -6,6 +6,32 @@
   const fmti= n=> Number(n||0).toLocaleString("de-DE");
   const now = ()=> Math.floor(Date.now()/1000);
 
+  // ===== CSP/RPC Helpers =====
+  function toAbsolute(u){
+    try{
+      const s = String(u||"");
+      if (s.startsWith("http://") || s.startsWith("https://")) return s;
+      if (s.startsWith("//")) return location.protocol + s;
+      if (s.startsWith("/"))  return location.origin + s;
+      return new URL(s, location.origin).toString();
+    }catch{
+      return location.origin + "/api/token/rpc";
+    }
+  }
+  function sameOrigin(u){
+    try{ return new URL(u, location.href).origin === location.origin; }
+    catch{ return false; }
+  }
+  function safeRpc(u){
+    const fallback = location.origin + "/api/token/rpc";
+    if (!u) return fallback;
+    const s = String(u);
+    if (s.includes("api.mainnet-beta.solana.com")) return fallback;   // CSP: niemals direkt
+    const abs = toAbsolute(s);
+    if (!sameOrigin(abs)) return fallback;                            // Fremd-Origin -> Proxy
+    return abs;
+  }
+
   let STATE = {
     rpc: null, inpi: null, usdc: null,
     presale: "pre", tge: null,
@@ -18,82 +44,6 @@
   };
 
   let conn=null, provider=null, pubkey=null;
-
-  // ---------- helpers ----------
-  function sameOrigin(u){ try{ return new URL(u, location.href).origin === location.origin; }catch{ return false; } }
-  function safeRpc(u){
-    // Wenn der Status fälschlich einen externen RPC liefert (CSP blockt), zwinge Proxy
-    if (!u) return "/api/token/rpc";
-    if (String(u).includes("api.mainnet-beta.solana.com")) return "/api/token/rpc";
-    if (!sameOrigin(u)) return "/api/token/rpc";
-    return u;
-  }
-  function walletLinks(payUrl){
-    if (!payUrl) return null;
-    return {
-      solana: payUrl,
-      phantom: `https://phantom.app/ul/v1/solana-pay?link=${encodeURIComponent(payUrl)}`,
-      solflare: `https://solflare.com/ul/v1/solana-pay?link=${encodeURIComponent(payUrl)}`
-    };
-  }
-
-  // Lazy-load QR lib, wenn nötig
-  let qrLibPromise=null;
-  function ensureQrLib(){
-    if (window.QRCode && typeof window.QRCode.toCanvas==="function") return Promise.resolve();
-    if (qrLibPromise) return qrLibPromise;
-    qrLibPromise = new Promise((resolve)=>{
-      const tryLoad = (src, next)=>{
-        const s=document.createElement("script");
-        s.src=src; s.async=true; s.onload=()=>resolve();
-        s.onerror=()=> next? next(): resolve(); // keine harten Fehler – wir fallen später auf Links zurück
-        document.head.appendChild(s);
-      };
-      // zwei CDNs probieren
-      tryLoad("https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js", ()=> {
-        tryLoad("https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js");
-      });
-    });
-    return qrLibPromise;
-  }
-
-  // Zeichnet QR in ein <canvas id="..."> – sonst Fallback: Link + Buttons anzeigen
-  async function drawQR(canvas, text, linkBoxId){
-    if (!canvas || !text) return;
-    await ensureQrLib();
-    if (window.QRCode && typeof window.QRCode.toCanvas==="function"){
-      try{
-        await window.QRCode.toCanvas(canvas, text, { width: 240, margin:1 });
-        // zusätzlich Links setzen (falls vorhanden)
-        if (linkBoxId){
-          const box = el(linkBoxId);
-          if (box){
-            const L = walletLinks(text);
-            box.innerHTML = L ? (
-              `<a class="btn" href="${L.solana}" target="_blank" rel="noopener">Solana Pay öffnen</a>
-               <a class="btn" href="${L.phantom}" target="_blank" rel="noopener">Phantom</a>
-               <a class="btn" href="${L.solflare}" target="_blank" rel="noopener">Solflare</a>`
-            ) : "";
-          }
-        }
-        return;
-      }catch{/* fall through */}
-    }
-    // Fallback: QR nicht möglich → Links rendern
-    const box = el(linkBoxId);
-    if (box){
-      const L = walletLinks(text);
-      const esc = (s)=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
-      box.innerHTML = `
-        <div class="qr-fallback">
-          <p>QR konnte nicht gezeichnet werden. Nutze einen der Links:</p>
-          <p><a class="btn" href="${esc(L?.solana||text)}" target="_blank" rel="noopener">Solana Pay öffnen</a></p>
-          <p><a class="btn" href="${esc(L?.phantom||"#")}" target="_blank" rel="noopener">Phantom</a>
-             <a class="btn" href="${esc(L?.solflare||"#")}" target="_blank" rel="noopener">Solflare</a></p>
-          <p style="word-break:break-all;font-size:12px;color:#666">${esc(text)}</p>
-        </div>`;
-    }
-  }
 
   async function loadCfg(){
     const r = await fetch("./app-cfg.json?v="+(window.__INPI_VER__||Date.now()));
@@ -118,12 +68,12 @@
     STATE.usdc= j.usdc_mint || CFG.USDC;
     STATE.presale = j.presale_state || "pre";
     STATE.tge = j.tge_ts || null;
-    STATE.deposit_ata = j.deposit_usdc_ata || null;
+    STATE.deposit_ata   = j.deposit_usdc_ata || null;
     STATE.deposit_owner = j.deposit_usdc_owner || null;
     STATE.min = j.presale_min_usdc ?? null;
     STATE.max = j.presale_max_usdc ?? null;
 
-    // Preise (mit/ohne NFT) – Worker kann base/discount oder direkte Felder liefern
+    // Preise (mit/ohne NFT) – Worker liefert base + discount_bps ODER direkt Felder
     const priceWith = j.price_with_nft_usdc;
     const priceWo   = j.price_without_nft_usdc;
     if (Number.isFinite(priceWith) || Number.isFinite(priceWo)) {
@@ -215,6 +165,24 @@
     if (window.phantom?.solana?.isPhantom) return window.phantom.solana;
     if (window.solana?.isPhantom) return window.solana;
     return null;
+  }
+
+  // QR (Canvas-Lib oder Fallback <img>)
+  async function drawQR(canvasOrImg, text){
+    if (!canvasOrImg || !text) return;
+    // Canvas bevorzugt
+    if (window.QRCode?.toCanvas && canvasOrImg.tagName === "CANVAS"){
+      await window.QRCode.toCanvas(canvasOrImg, text, { width: 240, margin:1 });
+      return;
+    }
+    // Bild-Fallback
+    if (canvasOrImg.tagName === "IMG"){
+      canvasOrImg.src = "https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=" + encodeURIComponent(text);
+      canvasOrImg.alt = "QR";
+      return;
+    }
+    // Notfall: Text-Link
+    canvasOrImg.textContent = text;
   }
 
   // ======= On-chain helpers (SPL + Token-2022 Fallback) =======
@@ -351,12 +319,12 @@
         u.searchParams.set("label", "INPI Presale");
         u.searchParams.set("message", "INPI Presale Deposit");
         u.searchParams.set("memo", memo);
-        await drawQR(el("qr"), u.toString(), "qrLinks");
+        const qrEl = el("qr"); if (qrEl) await drawQR(qrEl, u.toString());
         if (msg) msg.textContent = "QR bereit – bestätige Betrag vom Server …";
       }
     }catch{}
 
-    // 2) Server-Intent (finale Solana-Pay-URL + Deeplinks)
+    // 2) Server-Intent (liefert finale Solana-Pay-URL + Deeplinks)
     try{
       const body = { wallet: pubkey.toBase58() };
       if (mode==="USDC") body.amount_usdc = Number(v);
@@ -369,8 +337,10 @@
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || `HTTP ${r.status}`);
 
+      // finaler QR
       const link = j.qr_contribute?.solana_pay_url || null;
-      if (link) await drawQR(el("qr"), link, "qrLinks");
+      const qrEl = el("qr");
+      if (link && qrEl) await drawQR(qrEl, link);
       const used = j.qr_contribute?.amount_usdc ?? body.amount_usdc ?? null;
       if (msg) msg.textContent = used!=null ? `✅ Intent registriert. Bitte ${used} USDC senden.` : "✅ Intent registriert.";
 
@@ -378,7 +348,7 @@
       if (j.qr_early_fee?.solana_pay_url){
         const earlyBox = el("early"); if (earlyBox) earlyBox.style.display = "block";
         const earRow = el("earRow");  if (earRow) earRow.style.display = "block";
-        await drawQR(el("qrEarly"), j.qr_early_fee.solana_pay_url, "qrEarlyLinks");
+        const qrE = el("qrEarly");    if (qrE) await drawQR(qrE, j.qr_early_fee.solana_pay_url);
         const emsg = el("emsg"); if (emsg) emsg.textContent = `Optional: ${fmt(j.qr_early_fee.amount_usdc,2)} USDC Early-Fee scannen.`;
       }
     }catch(e){
@@ -399,7 +369,7 @@
     });
     const j = await r.json();
     if (!r.ok || !j?.ok) { alert(j?.error||"Fehler"); return; }
-    await drawQR(el("qrEarly"), j.solana_pay_url, "qrEarlyLinks");
+    const qrE = el("qrEarly"); if (qrE) await drawQR(qrE, j.solana_pay_url);
     if (emsg) emsg.textContent = `Sende ${STATE.early.flat} USDC und bestätige unten die Signatur.`;
   }
   async function confirmEarly(){
@@ -418,7 +388,7 @@
   }
 
   function bindUI(){
-    const btnHow = el("btnHow"); if (btnHow) btnHow.onclick = ()=> alert("Kurz: 1) Wallet verbinden  2) Betrag eingeben  3) QR scannen (USDC)  4) optional: Early-Fee 1 USDC scannen & Signatur bestätigen.");
+    const btnHow = el("btnHow"); if (btnHow) btnHow.onclick = ()=> alert("Kurz: 1) Wallet verbinden  2) Betrag eingeben  3) QR scannen (USDC)  4) optional: Early-Fee scannen & Signatur bestätigen.");
     const btnIntent = el("btnIntent"); if (btnIntent) btnIntent.onclick = onIntent;
     const btnEarly  = el("btnEarly");  if (btnEarly)  btnEarly.onclick  = startEarly;
     const btnConfirm= el("btnConfirm");if (btnConfirm)btnConfirm.onclick= confirmEarly;
@@ -466,7 +436,8 @@
     await loadCfg();
     await status();
     if (window.solanaWeb3?.Connection && STATE.rpc){
-      conn = new window.solanaWeb3.Connection(STATE.rpc, "confirmed");
+      const rpcUrl = toAbsolute(STATE.rpc);   // ABSOLUT & CSP-sicher
+      conn = new window.solanaWeb3.Connection(rpcUrl, "confirmed");
     }
     await connectIfPossible();
 
