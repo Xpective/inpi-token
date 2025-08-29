@@ -129,15 +129,15 @@ async function hasNft(env: Env, owner: string, gateMint?: string) {
 }
 
 /* -------- pages proxy (mit /token Prefix-Strip) -------- */
+/* -------- pages proxy (ohne Strip, spiegelt Pfade 1:1) -------- */
 async function proxyPages(env: Env, req: Request, url: URL) {
-  // /token → /token/ (schöne URLs)
+  // Schönere URL /token → /token/
   if (url.pathname === "/token" && req.method === "GET") {
     return Response.redirect(url.origin + "/token/", 301);
   }
-  // Strip genau 1x '/token'
-  const subpath = url.pathname.replace(/^\/token(\/|$)/, "/");
-  const upstreamBase = new URL(env.PAGES_UPSTREAM);
-  const upstreamUrl = new URL(subpath + url.search, upstreamBase);
+
+  // Upstream = exakt gleicher Pfad wie angefragt
+  const upstreamUrl = new URL(url.pathname + url.search, env.PAGES_UPSTREAM);
 
   const reqHeaders = new Headers(req.headers);
   reqHeaders.delete("host");
@@ -149,13 +149,16 @@ async function proxyPages(env: Env, req: Request, url: URL) {
   });
 
   const h = new Headers(r.headers);
-  if (r.ok && /\.(js|css|png|jpg|svg|json|webp|woff2?)$/i.test(subpath)) {
+  // leichte Caches für statische Assets
+  if (r.ok && /\.(js|css|png|jpg|svg|json|webp|woff2?)$/i.test(url.pathname)) {
     h.set("cache-control","public, max-age=600");
   } else {
     h.set("cache-control","no-store");
   }
+  // Sicherheitsheader
   h.set("x-content-type-options","nosniff");
   h.set("referrer-policy","no-referrer");
+
   return new Response(r.body, { status: r.status, headers: h });
 }
 
