@@ -1,6 +1,6 @@
 <script>
 /* ===========================================
-   Inpinity Token – Frontend (Nur-QR, keine Links)
+   Inpinity Token – Frontend (Nur-QR, keine Links, mit Optimistic-QR)
    Pfad: /pages/token/app.js
    =========================================== */
 
@@ -712,31 +712,66 @@ async function drawQR(imgOrCanvas, text, size=240){
   await QRCodeLib.toCanvas(c, text, { width: size, margin: 1 });
 }
 
-/* ---------- PRESALE INTENT (Nur-QR) ---------- */
+/* --- Helper: lokales Ref (hex) + Solana-Pay-URL bauen --- */
+function randomRefHex(len=16){
+  const a = new Uint8Array(len);
+  crypto.getRandomValues(a);
+  return [...a].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+function buildSolPayURL(recipient, amount, usdcMint, memo, label="INPI Presale", message="INPI Presale Deposit"){
+  const u = new URL(`solana:${recipient}`);
+  u.searchParams.set("amount", String(amount));
+  u.searchParams.set("spl-token", usdcMint);
+  u.searchParams.set("label", label);
+  u.searchParams.set("message", message);
+  u.searchParams.set("memo", memo);
+  return u.toString();
+}
+
+/* ---------- PRESALE INTENT (Nur-QR, mit Optimistic-QR, kein Reload) ---------- */
 let inFlight=false;
 if (btnPresaleIntent){
-  btnPresaleIntent.addEventListener("click", async ()=>{
+  // falls der Button im HTML type="submit" wäre → wir erzwingen Button-Verhalten
+  btnPresaleIntent.setAttribute("type","button");
+
+  btnPresaleIntent.addEventListener("click", async (e)=>{
+    e?.preventDefault?.();
     if(inFlight) return;
     if(!pubkey) return alert("Bitte zuerst mit Phantom verbinden.");
     if (STATE.presale_state==="closed") return alert("Presale ist geschlossen.");
 
-    const v = Number(inpAmount?.value || "0");
-    if (!v||v<=0) return alert(`Bitte gültigen Betrag eingeben (${STATE.input_mode}).`);
+    const vRaw = Number(inpAmount?.value || "0");
+    if (!vRaw||vRaw<=0) return alert(`Bitte gültigen Betrag eingeben (${STATE.input_mode}).`);
 
     // Optional: grobe Cap-Prüfung bei USDC-Modus (Server prüft sowieso final)
     if (STATE.input_mode==="USDC"){
-      if (STATE.presale_min_usdc!=null && v<STATE.presale_min_usdc) return alert(`Mindestens ${STATE.presale_min_usdc} USDC.`);
-      if (STATE.presale_max_usdc!=null && v>STATE.presale_max_usdc) return alert(`Maximal ${STATE.presale_max_usdc} USDC.`);
+      if (STATE.presale_min_usdc!=null && vRaw<STATE.presale_min_usdc) return alert(`Mindestens ${STATE.presale_min_usdc} USDC.`);
+      if (STATE.presale_max_usdc!=null && vRaw>STATE.presale_max_usdc) return alert(`Maximal ${STATE.presale_max_usdc} USDC.`);
     }
 
-    inFlight=true; if (intentMsg) intentMsg.textContent="Prüfe Caps & registriere Intent …";
+    inFlight=true; if (intentMsg) intentMsg.textContent="Erzeuge QR …";
+
+    /* -------- 1) Sofort lokalen „optimistic“ QR zeichnen -------- */
+    let localPayURL = null;
+    try {
+      const recipient = STATE.deposit_owner || CFG.DEPOSIT_OWNER_FALLBACK;
+      if (recipient){
+        const price = currentPriceUSDC();
+        const usdcAmount = STATE.input_mode==="USDC" ? round6(vRaw) : round6((price||0)*vRaw);
+        const memoLocal = `INPI-presale-pre-${randomRefHex(8)}`;
+        localPayURL = buildSolPayURL(recipient, usdcAmount, STATE.usdc_mint || CFG.USDC_MINT, memoLocal);
+        payArea && (payArea.style.display="block");
+        if (qrContrib && localPayURL){ await drawQR(qrContrib, localPayURL, 240); }
+        intentMsg && (intentMsg.textContent = "QR bereit – Betrag wird serverseitig bestätigt …");
+      }
+    } catch {}
+
+    /* -------- 2) Parallel: echten Intent holen & QR live ersetzen -------- */
     try{
       // optional signMessage
       let sig_b58=null, msg_str=null;
       if (provider?.signMessage){
-        const payloadLine = (STATE.input_mode==="USDC")
-          ? `amount_usdc=${v}`
-          : `amount_inpi=${v}`;
+        const payloadLine = (STATE.input_mode==="USDC") ? `amount_usdc=${vRaw}` : `amount_inpi=${vRaw}`;
         msg_str = `INPI Presale Intent\nwallet=${pubkey.toBase58()}\n${payloadLine}\nts=${Date.now()}`;
         const enc=new TextEncoder().encode(msg_str);
         let signed = await provider.signMessage(enc,"utf8").catch(async()=>{ try{ return await provider.signMessage(enc);}catch{ return null; }});
@@ -745,8 +780,8 @@ if (btnPresaleIntent){
       }
 
       const body = { wallet: pubkey.toBase58(), sig_b58, msg_str };
-      if (STATE.input_mode==="USDC") body.amount_usdc = Number(v);
-      else body.amount_inpi = Number(v);
+      if (STATE.input_mode==="USDC") body.amount_usdc = Number(vRaw);
+      else body.amount_inpi = Number(vRaw);
 
       const r = await fetch(`${CFG.API_BASE}/presale/intent?t=${Date.now()}`, {
         method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
@@ -755,21 +790,21 @@ if (btnPresaleIntent){
       const j = await r.json().catch(()=>null);
       if (!r.ok || !j?.ok) throw new Error(j?.error || j?.detail || "Intent fehlgeschlagen");
 
-      // QR für die USDC-Zahlung (Nur-QR)
+      // Finalen QR anwenden
       const contrib = j?.qr_contribute || {};
-      const payLink = contrib.solana_pay_url || null;
+      const finalPayLink = contrib.solana_pay_url || null;
 
       if (payArea) payArea.style.display="block";
-      if (qrContrib && payLink){ await drawQR(qrContrib, payLink, 240); }
+      if (qrContrib && finalPayLink){ await drawQR(qrContrib, finalPayLink, 240); }
 
-      // Zweiter QR: Early-Claim-Fee (falls geliefert)
+      // Optional: zweiter QR (Early-Fee)
       const fee = j?.qr_early_fee;
       if (fee && fee.solana_pay_url) await renderEarlyFeeInline(fee);
 
       // UI-Text
       if (intentMsg){
         const usedUsdc = contrib?.amount_usdc ?? body.amount_usdc ?? null;
-        const usedTxt = usedUsdc!=null ? `${round6(usedUsdc)} USDC` : (STATE.input_mode==="INPI" ? `${v} INPI (Server berechnet USDC)` : `${v} USDC`);
+        const usedTxt = usedUsdc!=null ? `${round6(usedUsdc)} USDC` : (STATE.input_mode==="INPI" ? `${vRaw} INPI (Server berechnet USDC)` : `${vRaw} USDC`);
         intentMsg.textContent="";
         const p1=document.createElement("p"); p1.textContent=`✅ Intent registriert. Bitte ${usedTxt} per QR (SPL-USDC) senden.`;
         intentMsg.appendChild(p1);
@@ -785,10 +820,11 @@ if (btnPresaleIntent){
       }
 
       if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
-
       await refreshStatus();
     }catch(e){
-      console.error(e); alert(`Intent fehlgeschlagen:\n${e?.message||e}`);
+      console.error(e);
+      if (!localPayURL) alert(`Intent fehlgeschlagen:\n${e?.message||e}`);
+      intentMsg && (intentMsg.textContent = "Intent fehlgeschlagen.");
     }finally{ inFlight=false; }
   });
 }
