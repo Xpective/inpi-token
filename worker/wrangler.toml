@@ -16,7 +16,7 @@ kv_namespaces = [
 [vars]
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 INPI_MINT = "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1"
-CREATOR   = "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7U..."        # vollständiger Pubkey!
+CREATOR   = "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7UUtfHrCp"        # vollständiger Pubkey!
 USDC_VAULT_ATA = "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6"
 
 PRESALE_STATE = "open"
