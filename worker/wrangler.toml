@@ -33,7 +33,7 @@ GATE_NFT_MINT  = "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ"
 AIRDROP_BONUS_BPS = "600"
 
 # WICHTIG: mehrere RPCs als CSV (erst Helius, dann Public)
-SOLANA_RPC = "https://mainnet.helius-rpc.com/?api-key=DEIN_HELIUS_KEY,https://api.mainnet-beta.solana.com"
+SOLANA_RPC = "https://mainnet.helius-rpc.com/?api-key=d95932bb-5385-4d84-ad18-7fc66e014d58,https://api.mainnet-beta.solana.com"
 
 ALLOWED_ORIGINS = "https://inpinity.online,https://inpi-token.pages.dev,https://*.inpi-token.pages.dev"
 PAGES_UPSTREAM = "https://inpi-token.pages.dev"
