@@ -247,7 +247,7 @@ const btnCopyDeposit = $("#btnCopyDeposit");
 
 // Presale QR (Hauptzahlung)
 const payArea = $("#payArea");
-const qrContrib = $("#inpi-qr"); // <img> – wird zu <canvas> ersetzt
+// WICHTIG: wir fragen das Element beim Zeichnen frisch ab (wegen IMG→CANVAS Swap)
 
 // Early Claim
 const earlyBox = $("#earlyBox");
@@ -256,7 +256,7 @@ const earlyArea = $("#earlyArea");
 const earlyMsg = $("#earlyMsg");
 const earlySig = $("#earlySig");
 const btnEarlyConfirm = $("#btnEarlyConfirm");
-const qrClaimNow = $("#early-qr"); // <img> – wird zu <canvas> ersetzt
+// auch hier: Element frisch abfragen
 
 /* ---------- Badge bei Preis ---------- */
 let gateBadge = document.createElement("span");
@@ -707,9 +707,16 @@ function toCanvasOrSwap(imgEl){
   return c;
 }
 async function drawQR(imgOrCanvas, text, size=240){
-  const c = toCanvasOrSwap(imgOrCanvas); if (!c || !text) return;
+  if (!text) return;
+  // Falls das referenzierte Element nicht (mehr) im DOM ist → frisches Element per ID ziehen
+  let node = imgOrCanvas;
+  if (!(node && node.isConnected) && node?.id) node = el(node.id);
+  const c = toCanvasOrSwap(node);
+  if (!c) return;
   await ensureQR();
   await QRCodeLib.toCanvas(c, text, { width: size, margin: 1 });
+  // Sichtbar machen (IMG hatte evtl. display:none)
+  c.style.display = "block";
 }
 
 /* --- Helper: lokales Ref (hex) + Solana-Pay-URL bauen --- */
@@ -761,7 +768,8 @@ if (btnPresaleIntent){
         const memoLocal = `INPI-presale-pre-${randomRefHex(8)}`;
         localPayURL = buildSolPayURL(recipient, usdcAmount, STATE.usdc_mint || CFG.USDC_MINT, memoLocal);
         payArea && (payArea.style.display="block");
-        if (qrContrib && localPayURL){ await drawQR(qrContrib, localPayURL, 240); }
+        const qre = el("inpi-qr");
+        if (qre && localPayURL){ await drawQR(qre, localPayURL, 240); }
         intentMsg && (intentMsg.textContent = "QR bereit – Betrag wird serverseitig bestätigt …");
       }
     } catch {}
@@ -795,7 +803,8 @@ if (btnPresaleIntent){
       const finalPayLink = contrib.solana_pay_url || null;
 
       if (payArea) payArea.style.display="block";
-      if (qrContrib && finalPayLink){ await drawQR(qrContrib, finalPayLink, 240); }
+      const qre2 = el("inpi-qr");
+      if (qre2 && finalPayLink){ await drawQR(qre2, finalPayLink, 240); }
 
       // Optional: zweiter QR (Early-Fee)
       const fee = j?.qr_early_fee;
@@ -845,7 +854,8 @@ async function startEarlyFlow(){
 
     const payLink = j.solana_pay_url || null;
 
-    if (qrClaimNow && payLink) { await drawQR(qrClaimNow, payLink, 240); }
+    const qe = el("early-qr");
+    if (qe && payLink) { await drawQR(qe, payLink, 240); }
     if (earlyMsg) earlyMsg.textContent = `Sende ${STATE.early.flat_usdc} USDC (QR scannen). Danach unten die Transaktions-Signatur eintragen und bestätigen.`;
   }catch(e){ console.error(e); alert(e?.message||e); }
 }
