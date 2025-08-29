@@ -1,21 +1,20 @@
 <script>
-/* ===========================================
-   Inpinity Token – Frontend (Nur-QR, keine Links, Optimistic-QR + Popup)
-   Pfad: /pages/token/app.js
-   =========================================== */
+/* ======================================================
+   File: /pages/token/app.js
+   Purpose: Simplified one-shot intent + robust logs
+   ====================================================== */
 
-/* ===== Cache-Busting Version ===== */
-const APP_VER = (window.APP_VER && String(window.APP_VER)) || new Date().toISOString().slice(0,10);
-const withVer = (u)=> u + (u.includes("?") ? "&" : "?") + "v=" + encodeURIComponent(APP_VER);
+/* ---- Version (cache buster for dynamic loads & popup badge) ---- */
+window.__INPI_VER__ = "front-" + new Date().toISOString();
 
 /* ==================== KONFIG ==================== */
 const CFG = {
-  // Immer über den Worker-Proxy gehen (vermeidet 403/CORS auf public RPCs)
+  // Immer über den Proxy (CORS/CSP-sicher)
   RPC: "https://inpinity.online/api/token/rpc",
+  API_BASE: "https://inpinity.online/api/token",
 
   INPI_MINT: "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1",
   USDC_MINT: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  API_BASE: "https://inpinity.online/api/token",
 
   // Programme (für On-Chain-Fallbacks)
   TOKEN_PROGRAM:   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -25,25 +24,15 @@ const CFG = {
   DISCOUNT_BPS_DEFAULT: 1000, // 10 %
   GATE_NFT_MINT: "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ",
 
-  // Preis-Fallbacks
+  // Fallbacks
   PRICE_WITHOUT_NFT_FALLBACK: 0.00031415,
-  PRICE_WITH_NFT_FALLBACK:    0.000282735, // 10% Rabatt
-
-  // Deposit/Owner Fallbacks
+  PRICE_WITH_NFT_FALLBACK:    0.000282735,
   DEPOSIT_USDC_ATA_FALLBACK:  "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6",
   DEPOSIT_OWNER_FALLBACK: null,
-
-  // Presale-Caps
   PRESALE_MIN_USDC_FALLBACK: null,
   PRESALE_MAX_USDC_FALLBACK: null,
-
-  // Airdrop-Bonus (bps)
   AIRDROP_BONUS_BPS_FALLBACK: 600,
-
-  // TGE (Unix sek)
   TGE_TS_FALLBACK: Math.floor(Date.now()/1000) + 60*60*24*90,
-
-  // Tokenomics-Fallbacks
   SUPPLY_FALLBACK: 3141592653,
   DISTR_FALLBACK_BPS: {
     dist_presale_bps:        1000,
@@ -56,27 +45,56 @@ const CFG = {
     dist_buyback_reserve_bps: 800
   },
 
-  // IIFE Builds (CSP-freundlich) – via ensure* dynamisch mit Version geladen
+  // IIFE Builds (CSP-freundlich)
   WEB3_IIFE: "https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js",
   QR_IIFE:   "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"
 };
 
-/* ================ SOLANA / PHANTOM ================ */
+/* ==================== LOGGING ==================== */
+const LOG_ID = "logArea";
+function ensureLogBox(){
+  let pre = document.getElementById(LOG_ID);
+  if (pre) return pre;
+  const main = document.querySelector("main");
+  if (!main) return null;
+  const sec = document.createElement("section");
+  sec.className = "card";
+  sec.style.marginTop = "12px";
+  sec.innerHTML = `
+    <h3 style="margin:.2rem 0 .6rem">Debug</h3>
+    <pre id="${LOG_ID}" style="white-space:pre-wrap;max-height:220px;overflow:auto;margin:0;background:#09141f;border:1px solid #1c2836;border-radius:8px;padding:8px;font-size:12px"></pre>
+  `;
+  main.appendChild(sec);
+  return document.getElementById(LOG_ID);
+}
+function log(...args){
+  console.log("[INPI]", ...args);
+  const box = ensureLogBox();
+  if (!box) return;
+  const ts = new Date().toISOString().split("T")[1].slice(0,8);
+  const line = args.map(a => {
+    try { return typeof a === "string" ? a : JSON.stringify(a); }
+    catch { return String(a); }
+  }).join(" ");
+  box.textContent += `[${ts}] ${line}\n`;
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ==================== HELPERS ==================== */
 let Connection = null; // wird nachgeladen
 let QRCodeLib = null;  // wird nachgeladen
 
 const $ = (sel) => document.querySelector(sel);
 const el = (id) => document.getElementById(id);
-const short = (a) => (a ? (a.slice(0,4) + "…" + a.slice(-4)) : "");
 function fmt(n,d=2){ if(n==null||isNaN(n))return "–"; return Number(n).toLocaleString("de-DE",{maximumFractionDigits:d}); }
 function fmti(n){ if(n==null||isNaN(n))return "–"; return Number(n).toLocaleString("de-DE"); }
 function solscan(addr){ return `https://solscan.io/account/${addr}`; }
 function nowSec(){ return Math.floor(Date.now()/1000); }
 function round6(n){ return Math.round(Number(n||0)*1e6)/1e6; }
+function numOr(def, maybe){ const n=Number(maybe); return Number.isFinite(n)? n : def; }
 
 /* ---------- Loader ---------- */
 function getPhantomProvider(){
-  // Keine Interaktion mit window.ethereum (EVM) → vermeidet injected.bundle.js-Fehler
   if (typeof window !== "undefined"){
     if (window.phantom?.solana?.isPhantom) return window.phantom.solana;
     if (window.solana?.isPhantom) return window.solana;
@@ -90,18 +108,18 @@ function ensureWeb3(){
       return resolve(true);
     }
     const s = document.createElement("script");
-    s.src = withVer(CFG.WEB3_IIFE);
+    s.src = CFG.WEB3_IIFE + "?v=" + encodeURIComponent(window.__INPI_VER__);
     s.async = true;
     s.onload = ()=>{
       if (window.solanaWeb3?.Connection){
         Connection = window.solanaWeb3.Connection;
         resolve(true);
       } else {
-        console.error("web3.js konnte nicht geladen werden.");
+        log("web3.js konnte nicht geladen werden.");
         resolve(false);
       }
     };
-    s.onerror = ()=>{ console.error("web3.js CDN-Load Fehler"); resolve(false); };
+    s.onerror = ()=>{ log("web3.js CDN-Load Fehler"); resolve(false); };
     document.head.appendChild(s);
   });
 }
@@ -109,10 +127,10 @@ function ensureQR(){
   return new Promise((resolve)=>{
     if (window.QRCode){ QRCodeLib = window.QRCode; return resolve(true); }
     const s = document.createElement("script");
-    s.src = withVer(CFG.QR_IIFE);
+    s.src = CFG.QR_IIFE + "?v=" + encodeURIComponent(window.__INPI_VER__);
     s.async = true;
     s.onload = ()=>{ QRCodeLib = window.QRCode; resolve(!!QRCodeLib); };
-    s.onerror = ()=>{ console.error("QR lib load error"); resolve(false); };
+    s.onerror = ()=>{ log("QR lib load error"); resolve(false); };
     document.head.appendChild(s);
   });
 }
@@ -120,9 +138,10 @@ function ensureQR(){
 /* ---------- ./app-cfg.json laden (optional) ---------- */
 async function loadPublicAppCfg(){
   try{
-    const r = await fetch(withVer("./app-cfg.json"), { headers:{accept:"application/json"} });
-    if (!r.ok) return;
+    const r = await fetch("./app-cfg.json?v="+encodeURIComponent(window.__INPI_VER__), { headers:{accept:"application/json"} });
+    if (!r.ok) { log("app-cfg.json skip (", r.status, ")"); return; }
     const c = await r.json();
+    log("app-cfg.json:", c);
 
     if (c?.RPC) CFG.RPC = c.RPC;
     if (c?.API_BASE) CFG.API_BASE = c.API_BASE;
@@ -136,7 +155,7 @@ async function loadPublicAppCfg(){
     if (c?.GATE_NFT_MINT) CFG.GATE_NFT_MINT = String(c.GATE_NFT_MINT);
 
     if (c?.CREATOR_USDC_ATA) CFG.DEPOSIT_USDC_ATA_FALLBACK = c.CREATOR_USDC_ATA;
-    if (c?.DEPOSIT_OWNER) CFG.DEPOSIT_OWNER_FALLBACK = c.DEPOSIT_OWNER;
+    if (c?.DEPOSIT_OWNER)    CFG.DEPOSIT_OWNER_FALLBACK    = c.DEPOSIT_OWNER;
 
     const base = Number(c?.PRICE_USDC_PER_INPI);
     const disc = Number(c?.DISCOUNT_BPS ?? CFG.DISCOUNT_BPS_DEFAULT);
@@ -161,7 +180,7 @@ async function loadPublicAppCfg(){
     }
 
     if (c?.AIRDROP_BONUS_BPS !== undefined) {
-      const v = Number(c.AIRDROP_BPS);
+      const v = Number(c.AIRDROP_BONUS_BPS);
       if (Number.isFinite(v) && v>=0) CFG.AIRDROP_BONUS_BPS_FALLBACK = v;
     }
 
@@ -177,10 +196,10 @@ async function loadPublicAppCfg(){
       }
       CFG.DISTR_FALLBACK_BPS = merge;
     }
-  }catch{}
+  }catch(e){ log("app-cfg.json error:", e?.message||e); }
 }
 
-/* ---------- Tokenomics UI ---------- */
+/* ---------- Tokenomics UI (gekürzt) ---------- */
 function ensureTokenomicsSection(){
   if (el("tokenomicsBox")) return;
   const main = document.querySelector("main"); if (!main) return;
@@ -253,10 +272,10 @@ const depositSolscanA = $("#depositSolscan");
 const depositOwnerEl = $("#depositOwner");
 const btnCopyDeposit = $("#btnCopyDeposit");
 
-// Presale QR (Hauptzahlung)
+// Presale QR
 const payArea = $("#payArea");
 
-// Early Claim
+// Early Claim (optional)
 const earlyBox = $("#earlyBox");
 const btnClaim = $("#btnClaim");
 const earlyArea = $("#earlyArea");
@@ -289,45 +308,11 @@ const STATE = {
   input_mode: "USDC" // "USDC" | "INPI"
 };
 
-/* ---------- Preis/Erwartung ---------- */
-function currentPriceUSDC(){
-  const w = STATE.price_with_nft_usdc, wo = STATE.price_without_nft_usdc;
-  return STATE.gate_ok ? (w ?? wo) : (wo ?? w) ;
-}
-function calcExpectedText(val){
-  const price=currentPriceUSDC();
-  if (!val || val<=0 || !price || price<=0) return "–";
-  if (STATE.input_mode==="USDC"){
-    return fmt(val/price,0) + " INPI";
-  } else {
-    return "~ " + fmt(round6(val*price), 6) + " USDC";
-  }
-}
-function updatePriceRow(){
-  if (!p0) return;
-  const w=STATE.price_with_nft_usdc, wo=STATE.price_without_nft_usdc, active=currentPriceUSDC();
-  const withTxt=(w&&w>0)? Number(w).toFixed(6)+" USDC" : "–";
-  const woTxt=(wo&&wo>0)? Number(wo).toFixed(6)+" USDC" : "–";
-  const actTxt=(active&&active>0)? Number(active).toFixed(6)+" USDC" : "–";
-  const badge = STATE.gate_ok ? "NFT-Rabatt aktiv ✓" : "kein NFT-Rabatt";
-  p0.textContent = `mit NFT: ${withTxt} • ohne NFT: ${woTxt} • aktiv: ${actTxt}`;
-  gateBadge.textContent = `(${badge})`;
-}
-function updateIntentAvailability(){
-  let reason = (STATE.presale_state==="closed") ? "Der Presale ist geschlossen." : null;
-  if (btnPresaleIntent){ btnPresaleIntent.disabled = !!reason; btnPresaleIntent.title = reason || ""; }
-  if (intentMsg){
-    const id="intent-reason"; let n=document.getElementById(id);
-    if (reason){ if(!n){ n=document.createElement('p'); n.id=id; n.className='muted'; intentMsg.appendChild(n); } n.textContent="Hinweis: "+reason; }
-    else if (n) n.remove();
-  }
-}
-
-/* ==================== POPUP-Flow: Öffnen + Cache + Messaging ==================== */
-let intentPopup = window.open("/token/intent-popup.html", "inpi_intent", "width=420,height=640,noopener");
+/* ==================== POPUP (gleich wie vorher) ==================== */
+let intentPopup = null;
 function openIntentPopup(){
   if (!intentPopup || intentPopup.closed){
-    intentPopup = window.open("/pages/token/intent-popup.html?v="+encodeURIComponent(APP_VER), "inpi_intent", "width=420,height=640,noopener");
+    intentPopup = window.open("/pages/token/intent-popup.html?v="+encodeURIComponent(window.__INPI_VER__), "inpi_intent", "width=420,height=640,noopener");
   }
   return intentPopup;
 }
@@ -344,7 +329,7 @@ function loadIntentCache(){
     const a = sessionStorage.getItem("inpi:lastIntent") || localStorage.getItem("inpi:lastIntent");
     if (!a) return null;
     const j = JSON.parse(a);
-    if (Date.now() - (j.ts||0) > 30*60*1000) return null; // 30min TTL
+    if (Date.now() - (j.ts||0) > 30*60*1000) return null;
     return j;
   } catch { return null; }
 }
@@ -358,9 +343,12 @@ window.addEventListener("message", (ev)=>{
 
 /* ==================== INIT ==================== */
 async function init(){
-  document.querySelectorAll("form").forEach(f=>{
-    f.addEventListener("submit",(e)=>{ e.preventDefault(); return false; });
-  });
+  window.addEventListener("error", e=> log("window error:", e.message));
+  window.addEventListener("unhandledrejection", e=> log("unhandledrejection:", e.reason||e));
+
+  log("init start", { ver: window.__INPI_VER__ });
+
+  document.querySelectorAll("form").forEach(f=> f.addEventListener("submit",(e)=> e.preventDefault()));
 
   await loadPublicAppCfg();
 
@@ -368,16 +356,17 @@ async function init(){
   const okQR   = await ensureQR();
   if (!okWeb3 || !okQR) {
     alert("Fehler: Libraries konnten nicht geladen werden. Bitte Seite neu laden.");
+    log("libs not ok", { okWeb3, okQR });
     return;
   }
 
   await refreshStatus();
 
-  // Immer Fallback auf unseren Proxy
   if (!STATE.rpc_url) STATE.rpc_url = CFG.RPC;
   if (!connection || currentRpcUrl !== STATE.rpc_url){
     connection = new Connection(STATE.rpc_url, "confirmed");
     currentRpcUrl=STATE.rpc_url;
+    log("Connection ready", { rpc: currentRpcUrl });
   }
 
   updatePriceRow(); updateIntentAvailability();
@@ -394,7 +383,7 @@ async function init(){
   if (provider?.isPhantom){
     try{
       await provider.connect({ onlyIfTrusted:true }).then(({publicKey})=>onConnected(publicKey)).catch(()=>{});
-    }catch{}
+    }catch(e){ log("onlyIfTrusted connect err:", e?.message||e); }
     if (btnConnect){
       btnConnect.disabled=false; btnConnect.textContent="Verbinden";
       btnConnect.onclick = async () => {
@@ -402,7 +391,7 @@ async function init(){
           const { publicKey } = await provider.connect();
           onConnected(publicKey);
         } catch(e){
-          console.error(e);
+          log("user cancelled connect:", e?.message||e);
           alert("Wallet-Verbindung abgebrochen.");
         }
       };
@@ -448,11 +437,14 @@ function setBonusNote(){
   }
 }
 
-/* ---------- Status laden ---------- */
+/* ---------- Status laden (mit Logs) ---------- */
 async function refreshStatus(){
   try{
-    const r = await fetch(`${CFG.API_BASE}/status?t=${Date.now()}&v=${encodeURIComponent(APP_VER)}`, { headers:{accept:"application/json"} });
+    const url = `${CFG.API_BASE}/status?t=${Date.now()}`;
+    log("status GET", url);
+    const r = await fetch(url, { headers:{accept:"application/json"} });
     const j = await r.json();
+    log("status OK", j);
 
     STATE.rpc_url   = j?.rpc_url || CFG.RPC;
     STATE.inpi_mint = j?.inpi_mint || CFG.INPI_MINT;
@@ -472,7 +464,6 @@ async function refreshStatus(){
       ? j.presale_max_usdc
       : (typeof CFG.PRESALE_MAX_USDC_FALLBACK === "number" ? CFG.PRESALE_MAX_USDC_FALLBACK : null);
 
-    // ---- Preislogik
     const presale = Number(j?.presale_price_usdc);
     const discBps = Number(j?.discount_bps ?? CFG.DISCOUNT_BPS_DEFAULT);
 
@@ -524,7 +515,7 @@ async function refreshStatus(){
 
     updatePriceRow(); updateIntentAvailability(); setBonusNote(); renderTokenomics(STATE.supply_total, STATE.dist_bps);
   } catch (e){
-    console.error(e);
+    log("status ERROR:", e?.message||e);
     // harte Fallbacks
     STATE.rpc_url=CFG.RPC;
     STATE.inpi_mint=CFG.INPI_MINT;
@@ -557,9 +548,42 @@ async function refreshStatus(){
     updatePriceRow(); updateIntentAvailability(); setBonusNote(); renderTokenomics(STATE.supply_total, STATE.dist_bps);
   }
 }
-function numOr(def, maybe){ const n=Number(maybe); return Number.isFinite(n)? n : def; }
 
-/* ---------- On-chain Fallbacks (Balances + Gate, inkl. Token-2022) ---------- */
+/* ---------- Preis/Erwartung ---------- */
+function currentPriceUSDC(){
+  const w = STATE.price_with_nft_usdc, wo = STATE.price_without_nft_usdc;
+  return STATE.gate_ok ? (w ?? wo) : (wo ?? w);
+}
+function calcExpectedText(val){
+  const price=currentPriceUSDC();
+  if (!val || val<=0 || !price || price<=0) return "–";
+  if (STATE.input_mode==="USDC"){
+    return fmt(val/price,0) + " INPI";
+    } else {
+    return "~ " + fmt(round6(val*price), 6) + " USDC";
+  }
+}
+function updatePriceRow(){
+  if (!p0) return;
+  const w=STATE.price_with_nft_usdc, wo=STATE.price_without_nft_usdc, active=currentPriceUSDC();
+  const withTxt=(w&&w>0)? Number(w).toFixed(6)+" USDC" : "–";
+  const woTxt=(wo&&wo>0)? Number(wo).toFixed(6)+" USDC" : "–";
+  const actTxt=(active&&active>0)? Number(active).toFixed(6)+" USDC" : "–";
+  const badge = STATE.gate_ok ? "NFT-Rabatt aktiv ✓" : "kein NFT-Rabatt";
+  p0.textContent = `mit NFT: ${withTxt} • ohne NFT: ${woTxt} • aktiv: ${actTxt}`;
+  gateBadge.textContent = `(${badge})`;
+}
+function updateIntentAvailability(){
+  let reason = (STATE.presale_state==="closed") ? "Der Presale ist geschlossen." : null;
+  if (btnPresaleIntent){ btnPresaleIntent.disabled = !!reason; btnPresaleIntent.title = reason || ""; }
+  if (intentMsg){
+    const id="intent-reason"; let n=document.getElementById(id);
+    if (reason){ if(!n){ n=document.createElement('p'); n.id=id; n.className='muted'; intentMsg.appendChild(n); } n.textContent="Hinweis: "+reason; }
+    else if (n) n.remove();
+  }
+}
+
+/* ---------- On-chain Fallbacks ---------- */
 async function getTokenUiAmountOnChain(ownerStr, mintStr){
   if (!connection) return 0;
   let total = 0;
@@ -567,7 +591,6 @@ async function getTokenUiAmountOnChain(ownerStr, mintStr){
     const owner = new window.solanaWeb3.PublicKey(ownerStr);
     const mint  = new window.solanaWeb3.PublicKey(mintStr);
 
-    // 1) Direkt per mint (klassisches SPL-Token-Programm)
     const res1 = await connection.getParsedTokenAccountsByOwner(
       owner, { mint }, { commitment: "confirmed" }
     );
@@ -577,7 +600,6 @@ async function getTokenUiAmountOnChain(ownerStr, mintStr){
     }
     if (total>0) return total;
 
-    // 2) Token-2022: über programId sammeln und nach mint filtern
     const prog2022 = new window.solanaWeb3.PublicKey(CFG.TOKEN_2022_PROG);
     const res2 = await connection.getParsedTokenAccountsByOwner(
       owner, { programId: prog2022 }, { commitment: "confirmed" }
@@ -589,7 +611,7 @@ async function getTokenUiAmountOnChain(ownerStr, mintStr){
       }
     }
     return total;
-  } catch { return 0; }
+  } catch(e){ log("getTokenUiAmountOnChain err:", e?.message||e); return 0; }
 }
 async function hasNftOnChain(ownerStr, nftMintStr){
   if (!ownerStr || !nftMintStr) return false;
@@ -601,35 +623,34 @@ async function hasNftOnChain(ownerStr, nftMintStr){
 async function refreshBalances(){
   if (!pubkey) return;
   try{
-    const url = `${CFG.API_BASE}/wallet/balances?wallet=${encodeURIComponent(pubkey.toBase58())}&t=${Date.now()}&v=${encodeURIComponent(APP_VER)}`;
+    const url = `${CFG.API_BASE}/wallet/balances?wallet=${encodeURIComponent(pubkey.toBase58())}&t=${Date.now()}`;
+    log("balances GET", url);
     const r = await fetch(url, { headers:{accept:"application/json"}});
-    if (!r.ok) throw new Error(`API ${r.status}`);
     const j = await r.json();
+    log("balances OK", j);
 
     let usdc = Number(j?.usdc?.uiAmount ?? NaN);
     let inpi = Number(j?.inpi?.uiAmount ?? NaN);
 
-    // Falls API kein Zahlwert liefert → on-chain fallback
     if (!Number.isFinite(usdc) || !Number.isFinite(inpi)) {
       const usdcMint = STATE.usdc_mint || CFG.USDC_MINT;
       const inpiMint = STATE.inpi_mint || CFG.INPI_MINT;
       usdc = await getTokenUiAmountOnChain(pubkey.toBase58(), usdcMint);
       inpi = await getTokenUiAmountOnChain(pubkey.toBase58(), inpiMint);
+      log("balances fallback on-chain", { usdc, inpi });
     }
 
     if (usdcBal) usdcBal.textContent = fmt(usdc,2);
     if (inpiBal) inpiBal.textContent = fmt(inpi,0);
 
     let gate = (j?.gate_ok === true);
-    if (!gate) {
-      gate = await hasNftOnChain(pubkey.toBase58(), CFG.GATE_NFT_MINT);
-    }
+    if (!gate) gate = await hasNftOnChain(pubkey.toBase58(), CFG.GATE_NFT_MINT);
     STATE.gate_ok = !!gate;
 
     updatePriceRow(); updateIntentAvailability();
     if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
   } catch(e){
-    console.warn("API Balances fail → on-chain fallback:", e?.message||e);
+    log("balances ERROR → on-chain fallback:", e?.message||e);
     const usdcMint = STATE.usdc_mint || CFG.USDC_MINT;
     const inpiMint = STATE.inpi_mint || CFG.INPI_MINT;
     const usdc = await getTokenUiAmountOnChain(pubkey.toBase58(), usdcMint);
@@ -644,14 +665,17 @@ async function refreshBalances(){
 async function refreshClaimStatus(){
   if (!pubkey) return;
   try{
-    const r = await fetch(`${CFG.API_BASE}/claim/status?wallet=${pubkey.toBase58()}&t=${Date.now()}&v=${encodeURIComponent(APP_VER)}`, { headers:{accept:"application/json"} });
+    const url = `${CFG.API_BASE}/claim/status?wallet=${pubkey.toBase58()}&t=${Date.now()}`;
+    log("claim/status GET", url);
+    const r = await fetch(url, { headers:{accept:"application/json"} });
     const st = await r.json();
+    log("claim/status OK", st);
     const pending = Number(st?.pending_inpi || 0);
     STATE.claimable_inpi = pending;
     const earlyExpected = $("#earlyExpected");
     if (earlyExpected) earlyExpected.textContent = fmt(pending,0) + " INPI";
   } catch(e){
-    console.warn("claim/status fallback:", e?.message||e);
+    log("claim/status ERROR:", e?.message||e);
     STATE.claimable_inpi = 0;
     const earlyExpected = $("#earlyExpected");
     if (earlyExpected) earlyExpected.textContent = "–";
@@ -666,6 +690,7 @@ function tickTGE(){
 }
 function onConnected(publicKey){
   pubkey = publicKey;
+  log("wallet connected", pubkey.toBase58());
   if (walletAddr) walletAddr.textContent = publicKey.toBase58();
 
   if (!listenersAttached) {
@@ -679,6 +704,7 @@ function onConnected(publicKey){
   clearInterval(POLL); POLL=setInterval(()=>{ refreshBalances(); refreshClaimStatus(); }, 30000);
 }
 function onDisconnected(){
+  log("wallet disconnected");
   pubkey=null; if (walletAddr) walletAddr.textContent="—";
   if (usdcBal) usdcBal.textContent="—"; if (inpiBal) inpiBal.textContent="—";
   STATE.gate_ok=false; STATE.claimable_inpi=0;
@@ -725,6 +751,7 @@ function injectInputModeSwitcher(){
     modeSel.onchange = ()=>{
       STATE.input_mode = modeSel.value;
       setHints();
+      log("mode changed:", STATE.input_mode);
     };
     setHints();
   }
@@ -746,7 +773,7 @@ if (btnHowTo){
   });
 }
 
-/* ---------- QR Utils (lokal rendern, kein externer Dienst) ---------- */
+/* ---------- QR Utils ---------- */
 function toCanvasOrSwap(imgEl){
   if (!imgEl) return null;
   if (imgEl.tagName === "CANVAS") return imgEl;
@@ -767,9 +794,10 @@ async function drawQR(imgOrCanvas, text, size=240){
   await ensureQR();
   await QRCodeLib.toCanvas(c, text, { width: size, margin: 1 });
   c.style.display = "block";
+  log("QR drawn", text.slice(0,64)+"…");
 }
 
-/* --- Helper: lokales Ref (hex) + Solana-Pay-URL bauen --- */
+/* --- Helper: lokales Ref + Solana-Pay-URL bauen --- */
 function randomRefHex(len=16){
   const a = new Uint8Array(len);
   crypto.getRandomValues(a);
@@ -785,52 +813,59 @@ function buildSolPayURL(recipient, amount, usdcMint, memo, label="INPI Presale",
   return u.toString();
 }
 
-/* ---------- PRESALE INTENT (Nur-QR, mit Optimistic-QR, kein Reload) ---------- */
+/* ---------- PRESALE INTENT: One-shot + Logs ---------- */
 let inFlight=false;
 if (btnPresaleIntent){
   btnPresaleIntent.setAttribute("type","button");
 
   btnPresaleIntent.addEventListener("click", async (e)=>{
     e?.preventDefault?.();
-    if(inFlight) return;
-    if(!pubkey) return alert("Bitte zuerst mit Phantom verbinden.");
-    if (STATE.presale_state==="closed") return alert("Presale ist geschlossen.");
+    if(inFlight) { log("intent ignored: inFlight"); return; }
+    if(!pubkey)  { alert("Bitte zuerst mit Phantom verbinden."); return; }
+    if (STATE.presale_state==="closed") { alert("Presale ist geschlossen."); return; }
 
-    const w = openIntentPopup();
+    // Popup sofort öffnen (sync)
+    openIntentPopup();
 
     const vRaw = Number(inpAmount?.value || "0");
-    if (!vRaw||vRaw<=0) return alert(`Bitte gültigen Betrag eingeben (${STATE.input_mode}).`);
+    if (!vRaw||vRaw<=0) { alert(`Bitte gültigen Betrag eingeben (${STATE.input_mode}).`); return; }
 
     if (STATE.input_mode==="USDC"){
       if (STATE.presale_min_usdc!=null && vRaw<STATE.presale_min_usdc) return alert(`Mindestens ${STATE.presale_min_usdc} USDC.`);
       if (STATE.presale_max_usdc!=null && vRaw>STATE.presale_max_usdc) return alert(`Maximal ${STATE.presale_max_usdc} USDC.`);
     }
 
-    inFlight=true; if (intentMsg) intentMsg.textContent="Erzeuge QR …";
+    inFlight=true;
+    if (intentMsg) intentMsg.textContent="Erzeuge QR …";
+    log("intent click", { mode: STATE.input_mode, amount: vRaw, wallet: pubkey.toBase58() });
 
-    /* -------- 1) Optimistic QR -------- */
+    /* 1) Sofort: lokaler (optimistic) QR */
     let localPayURL = null;
     try {
       const recipient = STATE.deposit_owner || CFG.DEPOSIT_OWNER_FALLBACK;
-      if (recipient){
-        const price = currentPriceUSDC();
-        const usdcAmount = STATE.input_mode==="USDC" ? round6(vRaw) : round6((price||0)*vRaw);
-        const memoLocal = `INPI-presale-pre-${randomRefHex(8)}`;
-        const usdcMint = STATE.usdc_mint || CFG.USDC_MINT;
+      const price = currentPriceUSDC();
+      const usdcAmount = STATE.input_mode==="USDC" ? round6(vRaw) : round6((price||0)*vRaw);
+      const memoLocal = `INPI-presale-pre-${randomRefHex(8)}`;
+      const usdcMint = STATE.usdc_mint || CFG.USDC_MINT;
+
+      if (recipient && usdcAmount>0){
         localPayURL = buildSolPayURL(recipient, usdcAmount, usdcMint, memoLocal);
         if (payArea) payArea.style.display="block";
         const qre = el("inpi-qr");
         if (qre && localPayURL){ await drawQR(qre, localPayURL, 240); }
         if (intentMsg) intentMsg.textContent = "QR bereit – Betrag wird serverseitig bestätigt …";
-
         const cache = { wallet: pubkey.toBase58(), mode: STATE.input_mode, amount: vRaw, optimisticQR: localPayURL };
         saveIntentCache(cache);
         safePostToPopup({ type:"optimistic_qr", url: localPayURL, cache });
+        log("optimistic QR ready", { recipient, usdcAmount, memoLocal });
+      } else {
+        log("optimistic skipped (no recipient or amount<=0)");
       }
-    } catch {}
+    } catch (e) { log("optimistic error:", e?.message||e); }
 
-    /* -------- 2) Finalen Intent vom Server holen -------- */
+    /* 2) Einmaliger Intent-Ping */
     try{
+      // optional signMessage (best effort)
       let sig_b58=null, msg_str=null;
       if (provider?.signMessage){
         const payloadLine = (STATE.input_mode==="USDC") ? `amount_usdc=${vRaw}` : `amount_inpi=${vRaw}`;
@@ -845,12 +880,16 @@ if (btnPresaleIntent){
       if (STATE.input_mode==="USDC") body.amount_usdc = Number(vRaw);
       else body.amount_inpi = Number(vRaw);
 
-      const r = await fetch(`${CFG.API_BASE}/presale/intent?t=${Date.now()}&v=${encodeURIComponent(APP_VER)}`, {
+      const url = `${CFG.API_BASE}/presale/intent?t=${Date.now()}`;
+      log("intent POST", { url, body });
+      const r = await fetch(url, {
         method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
         body: JSON.stringify(body)
       });
       const j = await r.json().catch(()=>null);
-      if (!r.ok || !j?.ok) throw new Error(j?.error || j?.detail || "Intent fehlgeschlagen");
+      log("intent RESP", { status: r.status, json: j });
+
+      if (!r.ok || !j?.ok) throw new Error(j?.error || j?.detail || `HTTP ${r.status}`);
 
       const contrib = j?.qr_contribute || {};
       const finalPayLink = contrib.solana_pay_url || null;
@@ -858,58 +897,59 @@ if (btnPresaleIntent){
       if (payArea) payArea.style.display="block";
       const qre2 = el("inpi-qr");
       if (qre2 && finalPayLink){ await drawQR(qre2, finalPayLink, 240); }
-
-      const fee = j?.qr_early_fee;
-      if (fee && fee.solana_pay_url) await renderEarlyFeeInline(fee);
-
       if (intentMsg){
         const usedUsdc = contrib?.amount_usdc ?? body.amount_usdc ?? null;
         const usedTxt = usedUsdc!=null ? `${round6(usedUsdc)} USDC` : (STATE.input_mode==="INPI" ? `${vRaw} INPI (Server berechnet USDC)` : `${vRaw} USDC`);
         intentMsg.textContent="";
         const p1=document.createElement("p"); p1.textContent=`✅ Intent registriert. Bitte ${usedTxt} per QR (SPL-USDC) senden.`;
         intentMsg.appendChild(p1);
-
-        if (fee){
-          const p2=document.createElement("p"); p2.textContent=`Optional: Early-Claim sofort freischalten – zahle die 1 USDC Fee mit dem zweiten QR.`;
-          intentMsg.appendChild(p2);
-        } else {
-          const p2=document.createElement("p"); p2.textContent=`Optional: Nutze unten den Early-Claim (1 USDC Fee) für sofortige Gutschrift.`;
-          intentMsg.appendChild(p2);
-        }
-        setBonusNote();
       }
 
+      // optionaler Fee-QR
+      const fee = j?.qr_early_fee;
+      if (fee && fee.solana_pay_url) {
+        await renderEarlyFeeInline(fee);
+        safePostToPopup({ type:"fee_qr", url: fee.solana_pay_url });
+      }
+
+      // Popup + Cache Update
       if (finalPayLink){
-        const cache = { wallet: pubkey.toBase58(), mode: STATE.input_mode, amount: vRaw, optimisticQR: localPayURL || null, finalQR: finalPayLink };
+        const cache = {
+          wallet: pubkey.toBase58(),
+          mode: STATE.input_mode,
+          amount: vRaw,
+          optimisticQR: localPayURL || null,
+          finalQR: finalPayLink
+        };
         saveIntentCache(cache);
         safePostToPopup({ type:"final_qr", url: finalPayLink, cache });
-      }
-      if (fee && fee.solana_pay_url){
-        safePostToPopup({ type:"fee_qr", url: fee.solana_pay_url });
       }
 
       if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
       await refreshStatus();
     }catch(e){
-      console.error(e);
+      log("intent ERROR:", e?.message||e);
       if (!localPayURL) alert(`Intent fehlgeschlagen:\n${e?.message||e}`);
       if (intentMsg) intentMsg.textContent = "Intent fehlgeschlagen.";
     }finally{ inFlight=false; }
   });
 }
 
-/* ---------- Early-Claim Fee (Nur-QR) ---------- */
+/* ---------- Early-Claim Fee ---------- */
 async function startEarlyFlow(){
   if (!pubkey) return alert("Bitte zuerst Wallet verbinden.");
   if (!STATE.early.enabled) return alert("Early-Claim ist derzeit deaktiviert.");
   try{
     if (earlyArea) earlyArea.style.display = "block";
     if (earlyMsg) earlyMsg.textContent="Erzeuge Solana-Pay QR …";
-    const r = await fetch(`${CFG.API_BASE}/claim/early-intent?v=${encodeURIComponent(APP_VER)}`, {
+    const url = `${CFG.API_BASE}/claim/early-intent?t=${Date.now()}`;
+    log("early-intent POST", { url });
+    const r = await fetch(url, {
       method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
       body: JSON.stringify({ wallet: pubkey.toBase58() })
     });
     const j = await r.json().catch(()=>null);
+    log("early-intent RESP", { status:r.status, json:j });
     if (!r.ok || !j?.ok) throw new Error(j?.error || "Early-Intent fehlgeschlagen");
 
     const payLink = j.solana_pay_url || null;
@@ -917,7 +957,7 @@ async function startEarlyFlow(){
     const qe = el("early-qr");
     if (qe && payLink) { await drawQR(qe, payLink, 240); }
     if (earlyMsg) earlyMsg.textContent = `Sende ${STATE.early.flat_usdc} USDC (QR scannen). Danach unten die Transaktions-Signatur eintragen und bestätigen.`;
-  }catch(e){ console.error(e); alert(e?.message||e); }
+  }catch(e){ log("early-intent ERROR:", e?.message||e); alert(e?.message||e); }
 }
 async function confirmEarlyFee(){
   if (!pubkey) return alert("Wallet verbinden.");
@@ -925,18 +965,21 @@ async function confirmEarlyFee(){
   if (!sig) return alert("Bitte die Transaktions-Signatur der Fee-Zahlung eintragen.");
   try{
     if (earlyMsg) earlyMsg.textContent="Prüfe Zahlung & queued Claim …";
-    const r = await fetch(`${CFG.API_BASE}/claim/confirm?v=${encodeURIComponent(APP_VER)}`, {
+    const url = `${CFG.API_BASE}/claim/confirm?t=${Date.now()}`;
+    log("early-confirm POST", { url, sig });
+    const r = await fetch(url, {
       method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
       body: JSON.stringify({ wallet: pubkey.toBase58(), fee_signature: sig })
     });
     const j = await r.json().catch(()=>null);
+    log("early-confirm RESP", { status:r.status, json:j });
     if (!r.ok || !j?.ok) throw new Error(j?.error || "Confirm fehlgeschlagen");
     if (earlyMsg) earlyMsg.textContent = `✅ Claim eingereiht (Job: ${j.job_id || "n/a"}).`;
     await refreshClaimStatus();
-  }catch(e){ console.error(e); alert(e?.message||e); if (earlyMsg) earlyMsg.textContent="Fehler bei der Bestätigung."; }
+  }catch(e){ log("early-confirm ERROR:", e?.message||e); alert(e?.message||e); if (earlyMsg) earlyMsg.textContent="Fehler bei der Bestätigung."; }
 }
 
-/* ---------- Early-Fee QR Inline im Presale-Bereich (Nur-QR) ---------- */
+/* ---------- Early-Fee QR Inline ---------- */
 async function renderEarlyFeeInline(fee){
   let feeBox = document.getElementById("inlineFeeBox");
   if (!feeBox){
@@ -976,5 +1019,5 @@ function bs58Encode(bytes){
 }
 
 /* ---------- Boot ---------- */
-window.addEventListener("DOMContentLoaded", ()=>{ init().catch(console.error); });
+window.addEventListener("DOMContentLoaded", ()=>{ init().catch(err=>log("init fatal:", err?.message||err)); });
 </script>
