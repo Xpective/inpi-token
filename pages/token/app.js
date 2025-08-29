@@ -1,31 +1,18 @@
-<script>
 /* ===========================================
-   Inpinity Token – Frontend (Nur-QR, keine Links, mit Optimistic-QR + Popup)
-   Pfad: /pages/token/app.js
+   Inpinity Token – Frontend (Phantom-first)
+   Pfad: /public/token/app.js
    =========================================== */
-
-/* ==================== BUILD/VERSION (Cache-Busting) ==================== */
-const APP_VERSION = "v-2025-08-29-001";
-try { window.__INPI_APP_VERSION__ = APP_VERSION; } catch {}
 
 /* ==================== KONFIG ==================== */
 const CFG = {
-  // Immer über den Proxy gehen, um 403/CORS von public RPC zu vermeiden:
-  RPC: "https://inpinity.online/api/token/rpc",
+  // Wird ggf. dynamisch via /public/app-cfg überschrieben
+  RPC: "https://api.mainnet-beta.solana.com",
 
   INPI_MINT: "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1",
   USDC_MINT: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   API_BASE: "https://inpinity.online/api/token",
 
-  // Programme (für On-Chain-Fallbacks)
-  TOKEN_PROGRAM:   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-  TOKEN_2022_PROG: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-
-  // Rabatt & NFT-Gate
-  DISCOUNT_BPS_DEFAULT: 1000, // 10 %
-  GATE_NFT_MINT: "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ",
-
-  // Preis-Fallbacks
+  // Preis-Fallbacks (falls API mal nicht antwortet)
   PRICE_WITHOUT_NFT_FALLBACK: 0.00031415,
   PRICE_WITH_NFT_FALLBACK:    0.000282735, // 10% Rabatt
 
@@ -33,7 +20,7 @@ const CFG = {
   DEPOSIT_USDC_ATA_FALLBACK:  "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6",
   DEPOSIT_OWNER_FALLBACK: null,
 
-  // Presale-Caps
+  // Presale-Caps (werden aus /public/app-cfg übernommen, falls vorhanden)
   PRESALE_MIN_USDC_FALLBACK: null,
   PRESALE_MAX_USDC_FALLBACK: null,
 
@@ -56,14 +43,12 @@ const CFG = {
     dist_buyback_reserve_bps: 800
   },
 
-  // IIFE Builds (CSP-freundlich) – mit Version-Param fürs Cache-Busting
-  WEB3_IIFE: "https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js?v="+APP_VERSION,
-  QR_IIFE:   "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js?v="+APP_VERSION
+  // CDN-Fallback (CSP-freundlich: jsDelivr)
+  WEB3_IIFE: "https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js"
 };
 
 /* ================ SOLANA / PHANTOM ================ */
-let Connection = null; // wird nachgeladen
-let QRCodeLib = null;  // wird nachgeladen
+let Connection = null; // wird nachgeladen, falls nötig
 
 const $ = (sel) => document.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -72,24 +57,8 @@ function fmt(n,d=2){ if(n==null||isNaN(n))return "–"; return Number(n).toLocal
 function fmti(n){ if(n==null||isNaN(n))return "–"; return Number(n).toLocaleString("de-DE"); }
 function solscan(addr){ return `https://solscan.io/account/${addr}`; }
 function nowSec(){ return Math.floor(Date.now()/1000); }
-function round6(n){ return Math.round(Number(n||0)*1e6)/1e6; }
 
-/* ---------- Guards/Utils ---------- */
-function sanitizeRpc(uStr){
-  try{
-    const u = new URL(uStr);
-    // Erzwinge unseren Proxy
-    if (u.origin !== "https://inpinity.online") return CFG.RPC;
-    if (!/\/api\/token\/rpc$/.test(u.pathname)) return CFG.RPC;
-    return u.toString();
-  }catch{ return CFG.RPC; }
-}
-function withVer(url){
-  const sep = url.includes("?") ? "&" : "?";
-  return `${url}${sep}v=${encodeURIComponent(APP_VERSION)}&t=${Date.now()}`;
-}
-
-/* ---------- Loader ---------- */
+/* ---------- Web3 + Provider laden ---------- */
 function getPhantomProvider(){
   if (typeof window !== "undefined"){
     if (window.phantom?.solana?.isPhantom) return window.phantom.solana;
@@ -117,46 +86,34 @@ function ensureWeb3(){
     document.head.appendChild(s);
   });
 }
-function ensureQR(){
-  return new Promise((resolve)=>{
-    if (window.QRCode){ QRCodeLib = window.QRCode; return resolve(true); }
-    const s = document.createElement("script");
-    s.src = CFG.QR_IIFE; s.async = true;
-    s.onload = ()=>{ QRCodeLib = window.QRCode; resolve(!!QRCodeLib); };
-    s.onerror = ()=>{ console.error("QR lib load error"); resolve(false); };
-    document.head.appendChild(s);
-  });
-}
 
-/* ---------- ./app-cfg.json laden (optional) ---------- */
+/* ---------- /public/app-cfg laden (optional) ---------- */
 async function loadPublicAppCfg(){
   try{
-    const r = await fetch(withVer("./app-cfg.json"), { headers:{accept:"application/json"} });
+    const r = await fetch("/public/app-cfg", { headers:{accept:"application/json"} });
     if (!r.ok) return;
     const c = await r.json();
 
-    if (c?.RPC) CFG.RPC = sanitizeRpc(c.RPC);
+    // Basis
+    if (c?.RPC) CFG.RPC = c.RPC;
     if (c?.API_BASE) CFG.API_BASE = c.API_BASE;
     if (c?.INPI_MINT) CFG.INPI_MINT = c.INPI_MINT;
     if (c?.USDC_MINT) CFG.USDC_MINT = c.USDC_MINT;
 
-    if (c?.DISCOUNT_BPS !== undefined) {
-      const v = Number(c.DISCOUNT_BPS);
-      if (Number.isFinite(v) && v>=0) CFG.DISCOUNT_BPS_DEFAULT = v;
-    }
-    if (c?.GATE_NFT_MINT) CFG.GATE_NFT_MINT = String(c.GATE_NFT_MINT);
-
+    // Deposit / Owner
     if (c?.CREATOR_USDC_ATA) CFG.DEPOSIT_USDC_ATA_FALLBACK = c.CREATOR_USDC_ATA;
     if (c?.DEPOSIT_OWNER) CFG.DEPOSIT_OWNER_FALLBACK = c.DEPOSIT_OWNER;
 
+    // Preis + Rabatt
     const base = Number(c?.PRICE_USDC_PER_INPI);
-    const disc = Number(c?.DISCOUNT_BPS ?? CFG.DISCOUNT_BPS_DEFAULT);
+    const disc = Number(c?.DISCOUNT_BPS ?? 0);
     if (Number.isFinite(base) && base>0){
       CFG.PRICE_WITHOUT_NFT_FALLBACK = base;
       const withNft = base * (1 - (Number.isFinite(disc)? disc : 0)/10000);
       CFG.PRICE_WITH_NFT_FALLBACK = Math.round(withNft*1e6)/1e6;
     }
 
+    // Caps
     if (c?.PRESALE_MIN_USDC !== undefined) {
       const v = Number(c.PRESALE_MIN_USDC);
       CFG.PRESALE_MIN_USDC_FALLBACK = Number.isFinite(v) ? v : null;
@@ -166,16 +123,19 @@ async function loadPublicAppCfg(){
       CFG.PRESALE_MAX_USDC_FALLBACK = Number.isFinite(v) ? v : null;
     }
 
+    // TGE
     if (c?.TGE_TS !== undefined) {
       const v = Number(c.TGE_TS);
       if (Number.isFinite(v) && v>0) CFG.TGE_TS_FALLBACK = v;
     }
 
+    // Airdrop-Bonus
     if (c?.AIRDROP_BONUS_BPS !== undefined) {
       const v = Number(c.AIRDROP_BONUS_BPS);
       if (Number.isFinite(v) && v>=0) CFG.AIRDROP_BONUS_BPS_FALLBACK = v;
     }
 
+    // Tokenomics
     if (c?.SUPPLY_TOTAL !== undefined){
       const v = Number(c.SUPPLY_TOTAL);
       if (Number.isFinite(v) && v>0) CFG.SUPPLY_FALLBACK = v;
@@ -264,8 +224,12 @@ const depositSolscanA = $("#depositSolscan");
 const depositOwnerEl = $("#depositOwner");
 const btnCopyDeposit = $("#btnCopyDeposit");
 
-// Presale QR (Hauptzahlung)
+// Presale QR
 const payArea = $("#payArea");
+const qrContrib = $("#inpi-qr");
+// Deep-Links
+const aPhantom = $("#link-phantom");
+const aSolflare = $("#link-solflare");
 
 // Early Claim
 const earlyBox = $("#earlyBox");
@@ -274,6 +238,7 @@ const earlyArea = $("#earlyArea");
 const earlyMsg = $("#earlyMsg");
 const earlySig = $("#earlySig");
 const btnEarlyConfirm = $("#btnEarlyConfirm");
+const qrClaimNow = $("#early-qr");
 
 /* ---------- Badge bei Preis ---------- */
 let gateBadge = document.createElement("span");
@@ -284,6 +249,7 @@ if (p0?.parentElement) p0.parentElement.appendChild(gateBadge);
 
 /* ---------- State ---------- */
 let connection = null, currentRpcUrl = null, provider = null, pubkey = null, POLL = null;
+let lastDeepLinks = { contribute:null, claimNow:null };
 let listenersAttached = false;
 
 const STATE = {
@@ -296,8 +262,7 @@ const STATE = {
   early: { enabled:false, flat_usdc:1, fee_dest_wallet:null },
   airdrop_bonus_bps: 600,
   claimable_inpi: 0,
-  supply_total: CFG.SUPPLY_FALLBACK, dist_bps: { ...CFG.DISTR_FALLBACK_BPS },
-  input_mode: "USDC" // "USDC" | "INPI"
+  supply_total: CFG.SUPPLY_FALLBACK, dist_bps: { ...CFG.DISTR_FALLBACK_BPS }
 };
 
 /* ---------- Preis/Erwartung ---------- */
@@ -305,14 +270,10 @@ function currentPriceUSDC(){
   const w = STATE.price_with_nft_usdc, wo = STATE.price_without_nft_usdc;
   return STATE.gate_ok ? (w ?? wo) : (wo ?? w) ;
 }
-function calcExpectedText(val){
-  const price=currentPriceUSDC();
-  if (!val || val<=0 || !price || price<=0) return "–";
-  if (STATE.input_mode==="USDC"){
-    return fmt(val/price,0) + " INPI";
-  } else {
-    return "~ " + fmt(round6(val*price), 6) + " USDC";
-  }
+function calcExpectedInpi(usdc){
+  if (!usdc||usdc<=0) return "–";
+  const price=currentPriceUSDC(); if (!price||price<=0) return "–";
+  return fmt(usdc/price,0) + " INPI";
 }
 function updatePriceRow(){
   if (!p0) return;
@@ -320,7 +281,7 @@ function updatePriceRow(){
   const withTxt=(w&&w>0)? Number(w).toFixed(6)+" USDC" : "–";
   const woTxt=(wo&&wo>0)? Number(wo).toFixed(6)+" USDC" : "–";
   const actTxt=(active&&active>0)? Number(active).toFixed(6)+" USDC" : "–";
-  const badge = STATE.gate_ok ? "NFT-Rabatt aktiv ✓" : "kein NFT-Rabatt";
+  const badge = STATE.gate_ok ? "NFT ✓" : "NFT ✗";
   p0.textContent = `mit NFT: ${withTxt} • ohne NFT: ${woTxt} • aktiv: ${actTxt}`;
   gateBadge.textContent = `(${badge})`;
 }
@@ -334,65 +295,23 @@ function updateIntentAvailability(){
   }
 }
 
-/* ==================== POPUP-Flow: Öffnen + Cache + Messaging ==================== */
-let intentPopup = null;
-function openIntentPopup(){
-  if (!intentPopup || intentPopup.closed){
-    try{
-      intentPopup = window.open("/pages/token/intent-popup.html", "inpi_intent", "width=420,height=640,noopener");
-      if (!intentPopup) alert("Popup wurde blockiert – bitte Popups für diese Seite erlauben.");
-    }catch{}
-  }
-  return intentPopup;
-}
-function safePostToPopup(msg){
-  try { if (intentPopup && !intentPopup.closed) intentPopup.postMessage(msg, location.origin); } catch {}
-}
-function saveIntentCache(obj){
-  const payload = { ...obj, ts: Date.now(), ver: APP_VERSION };
-  try { localStorage.setItem("inpi:lastIntent", JSON.stringify(payload)); } catch {}
-  try { sessionStorage.setItem("inpi:lastIntent", JSON.stringify(payload)); } catch {}
-}
-function loadIntentCache(){
-  try {
-    const a = sessionStorage.getItem("inpi:lastIntent") || localStorage.getItem("inpi:lastIntent");
-    if (!a) return null;
-    const j = JSON.parse(a);
-    if (j.ver !== APP_VERSION) return null; // bei Versionwechsel nicht hydraten
-    // 30min TTL
-    if (Date.now() - (j.ts||0) > 30*60*1000) return null;
-    return j;
-  } catch { return null; }
-}
-// Popup fragt nach Mount nach "hydrate"
-window.addEventListener("message", (ev)=>{
-  if (ev.origin !== location.origin) return;
-  if (ev.data?.type === "popup_ready"){
-    const cached = loadIntentCache();
-    if (cached) safePostToPopup({ type:"hydrate", data: cached });
-  }
-});
-
 /* ==================== INIT ==================== */
 async function init(){
-  // Form-Submit verhindern (Enter → kein Reload)
-  document.querySelectorAll("form").forEach(f=>{
-    f.addEventListener("submit",(e)=>{ e.preventDefault(); return false; });
-  });
-
+  // 0) Falls vorhanden, app-cfg einlesen (setzt Defaults dynamisch)
   await loadPublicAppCfg();
 
+  // 1) web3.js sicherstellen
   const okWeb3 = await ensureWeb3();
-  const okQR   = await ensureQR();
-  if (!okWeb3 || !okQR) {
-    alert("Fehler: Libraries konnten nicht geladen werden. Bitte Seite neu laden.");
+  if (!okWeb3) {
+    alert("Fehler: web3.js konnte nicht geladen werden. Bitte Seite neu laden.");
     return;
   }
 
+  // 2) API-Status laden
   await refreshStatus();
 
+  // 3) Verbindung vorbereiten
   if (!STATE.rpc_url) STATE.rpc_url = CFG.RPC;
-  STATE.rpc_url = sanitizeRpc(STATE.rpc_url);
   if (!connection || currentRpcUrl !== STATE.rpc_url){
     connection = new Connection(STATE.rpc_url, "confirmed");
     currentRpcUrl=STATE.rpc_url;
@@ -400,16 +319,11 @@ async function init(){
 
   updatePriceRow(); updateIntentAvailability();
 
-  // --- Eingabemodus (USDC/INPI) neben dem vorhandenen Input ergänzen ---
-  injectInputModeSwitcher();
-
+  if (inpAmount && STATE.presale_min_usdc != null) inpAmount.min = String(STATE.presale_min_usdc);
+  if (inpAmount && STATE.presale_max_usdc != null) inpAmount.max = String(STATE.presale_max_usdc);
   if (inpAmount && !inpAmount.step) inpAmount.step = "0.000001";
-  if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
 
-  // Caps nur in USDC-Hinweisen nutzen (Server validiert final)
-  if (inpAmount && STATE.presale_min_usdc != null && STATE.input_mode==="USDC") inpAmount.min = String(STATE.presale_min_usdc);
-  if (inpAmount && STATE.presale_max_usdc != null && STATE.input_mode==="USDC") inpAmount.max = String(STATE.presale_max_usdc);
-
+  // 4) Phantom Provider erkennen + Connect-Button
   provider = getPhantomProvider();
   if (provider?.isPhantom){
     try{
@@ -444,6 +358,7 @@ async function init(){
   }
 
   tickTGE(); setInterval(tickTGE, 1000);
+  if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedInpi(Number(inpAmount.value||"0"));
   if (earlyBox) earlyBox.style.display = STATE.early.enabled ? "block" : "none";
   if (btnClaim) btnClaim.onclick = startEarlyFlow;
   if (btnEarlyConfirm) btnEarlyConfirm.onclick = confirmEarlyFee;
@@ -471,10 +386,10 @@ function setBonusNote(){
 /* ---------- Status laden ---------- */
 async function refreshStatus(){
   try{
-    const r = await fetch(withVer(`${CFG.API_BASE}/status`), { headers:{accept:"application/json"} });
+    const r = await fetch(`${CFG.API_BASE}/status?t=${Date.now()}`, { headers:{accept:"application/json"} });
     const j = await r.json();
 
-    STATE.rpc_url   = sanitizeRpc(j?.rpc_url || CFG.RPC);
+    STATE.rpc_url   = j?.rpc_url || CFG.RPC;
     STATE.inpi_mint = j?.inpi_mint || CFG.INPI_MINT;
     STATE.usdc_mint = j?.usdc_mint || CFG.USDC_MINT;
 
@@ -492,21 +407,14 @@ async function refreshStatus(){
       ? j.presale_max_usdc
       : (typeof CFG.PRESALE_MAX_USDC_FALLBACK === "number" ? CFG.PRESALE_MAX_USDC_FALLBACK : null);
 
-    // ---- Preislogik
-    const presale = Number(j?.presale_price_usdc);
-    const discBps = Number(j?.discount_bps ?? CFG.DISCOUNT_BPS_DEFAULT);
+    STATE.price_with_nft_usdc    = ("price_with_nft_usdc" in (j||{}))
+      ? (Number(j.price_with_nft_usdc)||null)
+      : (Number(j?.presale_price_usdc)||null);
 
-    if ("price_without_nft_usdc" in (j||{})) {
-      STATE.price_without_nft_usdc = Number(j.price_without_nft_usdc) || null;
-    } else if (Number.isFinite(presale)) {
-      STATE.price_without_nft_usdc = presale;
-    }
-    if ("price_with_nft_usdc" in (j||{})) {
-      STATE.price_with_nft_usdc = Number(j.price_with_nft_usdc) || null;
-    } else if (Number.isFinite(presale)) {
-      const withNft = presale * (1 - (Number.isFinite(discBps) ? discBps : 0)/10000);
-      STATE.price_with_nft_usdc = Math.round(withNft * 1e6) / 1e6;
-    }
+    STATE.price_without_nft_usdc = ("price_without_nft_usdc" in (j||{}))
+      ? (Number(j.price_without_nft_usdc)||null)
+      : (Number(j?.public_price_usdc)||null);
+
     if (STATE.price_with_nft_usdc==null && STATE.price_without_nft_usdc==null){
       STATE.price_without_nft_usdc = CFG.PRICE_WITHOUT_NFT_FALLBACK;
       STATE.price_with_nft_usdc    = CFG.PRICE_WITH_NFT_FALLBACK;
@@ -545,7 +453,7 @@ async function refreshStatus(){
     updatePriceRow(); updateIntentAvailability(); setBonusNote(); renderTokenomics(STATE.supply_total, STATE.dist_bps);
   } catch (e){
     console.error(e);
-    // harte Fallbacks
+    // harte Fallbacks aus CFG
     STATE.rpc_url=CFG.RPC;
     STATE.inpi_mint=CFG.INPI_MINT;
     STATE.usdc_mint=CFG.USDC_MINT;
@@ -579,99 +487,41 @@ async function refreshStatus(){
 }
 function numOr(def, maybe){ const n=Number(maybe); return Number.isFinite(n)? n : def; }
 
-/* ---------- On-chain Fallbacks (Balances + Gate, inkl. Token-2022) ---------- */
-async function getTokenUiAmountOnChain(ownerStr, mintStr){
-  if (!connection) return 0;
-  let total = 0;
-  try{
-    const owner = new window.solanaWeb3.PublicKey(ownerStr);
-    const mint  = new window.solanaWeb3.PublicKey(mintStr);
-
-    // 1) Direkt per mint (klassisches SPL-Token-Programm)
-    const res1 = await connection.getParsedTokenAccountsByOwner(
-      owner, { mint }, { commitment: "confirmed" }
-    );
-    for (const v of (res1?.value||[])){
-      const amt = v?.account?.data?.parsed?.info?.tokenAmount;
-      total += Number(amt?.uiAmount ?? 0);
-    }
-    if (total>0) return total;
-
-    // 2) Token-2022: über programId sammeln und nach mint filtern
-    const prog2022 = new window.solanaWeb3.PublicKey(CFG.TOKEN_2022_PROG);
-    const res2 = await connection.getParsedTokenAccountsByOwner(
-      owner, { programId: prog2022 }, { commitment: "confirmed" }
-    );
-    for (const v of (res2?.value||[])){
-      const info = v?.account?.data?.parsed?.info;
-      if (info?.mint === mintStr){
-        total += Number(info?.tokenAmount?.uiAmount ?? 0);
-      }
-    }
-    return total;
-  } catch { return 0; }
-}
-async function hasNftOnChain(ownerStr, nftMintStr){
-  if (!ownerStr || !nftMintStr) return false;
-  const amt = await getTokenUiAmountOnChain(ownerStr, nftMintStr).catch(()=>0);
-  return amt > 0;
-}
-
 /* ---------- Wallet ---------- */
 async function refreshBalances(){
   if (!pubkey) return;
   try{
-    const url = withVer(`${CFG.API_BASE}/wallet/balances?wallet=${encodeURIComponent(pubkey.toBase58())}`);
+    const url = `${CFG.API_BASE}/wallet/balances?wallet=${encodeURIComponent(pubkey.toBase58())}&t=${Date.now()}`;
     const r = await fetch(url, { headers:{accept:"application/json"}});
-    if (!r.ok) throw new Error(`API ${r.status}`);
     const j = await r.json();
 
-    let usdc = Number(j?.usdc?.uiAmount ?? NaN);
-    let inpi = Number(j?.inpi?.uiAmount ?? NaN);
-
-    // Falls API kein Zahlwert liefert → on-chain fallback
-    if (!Number.isFinite(usdc) || !Number.isFinite(inpi)) {
-      const usdcMint = STATE.usdc_mint || CFG.USDC_MINT;
-      const inpiMint = STATE.inpi_mint || CFG.INPI_MINT;
-      usdc = await getTokenUiAmountOnChain(pubkey.toBase58(), usdcMint);
-      inpi = await getTokenUiAmountOnChain(pubkey.toBase58(), inpiMint);
-    }
-
+    const usdc = Number(j?.usdc?.uiAmount ?? NaN);
+    const inpi = Number(j?.inpi?.uiAmount ?? NaN);
     if (usdcBal) usdcBal.textContent = fmt(usdc,2);
     if (inpiBal) inpiBal.textContent = fmt(inpi,0);
 
-    let gate = (j?.gate_ok === true);
-    if (!gate) {
-      gate = await hasNftOnChain(pubkey.toBase58(), CFG.GATE_NFT_MINT);
-    }
-    STATE.gate_ok = !!gate;
-
+    STATE.gate_ok = !!j?.gate_ok;
     updatePriceRow(); updateIntentAvailability();
-    if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
   } catch(e){
-    console.warn("API Balances fail → on-chain fallback:", e?.message||e);
-    const usdcMint = STATE.usdc_mint || CFG.USDC_MINT;
-    const inpiMint = STATE.inpi_mint || CFG.INPI_MINT;
-    const usdc = await getTokenUiAmountOnChain(pubkey.toBase58(), usdcMint);
-    const inpi = await getTokenUiAmountOnChain(pubkey.toBase58(), inpiMint);
-    if (usdcBal) usdcBal.textContent = fmt(usdc,2);
-    if (inpiBal) inpiBal.textContent = fmt(inpi,0);
-    const gate = await hasNftOnChain(pubkey.toBase58(), CFG.GATE_NFT_MINT).catch(()=>false);
-    STATE.gate_ok = !!gate;
+    console.error(e);
+    if (usdcBal) usdcBal.textContent="–";
+    if (inpiBal) inpiBal.textContent="–";
+    STATE.gate_ok=false;
     updatePriceRow(); updateIntentAvailability();
   }
 }
 async function refreshClaimStatus(){
   if (!pubkey) return;
   try{
-    const r = await fetch(withVer(`${CFG.API_BASE}/claim/status?wallet=${pubkey.toBase58()}`), { headers:{accept:"application/json"} });
+    const r = await fetch(`${CFG.API_BASE}/claim/status?wallet=${pubkey.toBase58()}&t=${Date.now()}`, { headers:{accept:"application/json"} });
     const st = await r.json();
+
     const pending = Number(st?.pending_inpi || 0);
     STATE.claimable_inpi = pending;
     const earlyExpected = $("#earlyExpected");
     if (earlyExpected) earlyExpected.textContent = fmt(pending,0) + " INPI";
   } catch(e){
-    console.warn("claim/status fallback:", e?.message||e);
+    console.error(e);
     STATE.claimable_inpi = 0;
     const earlyExpected = $("#earlyExpected");
     if (earlyExpected) earlyExpected.textContent = "–";
@@ -707,258 +557,99 @@ function onDisconnected(){
 }
 
 /* ---------- Inputs ---------- */
-function injectInputModeSwitcher(){
-  if (!inpAmount) return;
-  const parentLabel = inpAmount.closest("label");
-  if (parentLabel){
-    if (parentLabel.firstChild && parentLabel.firstChild.nodeType===3) {
-      parentLabel.firstChild.textContent = "Betrag";
-    }
-    const wrap = document.createElement("div");
-    wrap.className = "row";
-    wrap.style.gap = ".5rem";
-    wrap.style.marginTop = ".25rem";
-    wrap.innerHTML = `
-      <label class="muted">Eingabe in&nbsp;
-        <select id="inpMode" style="padding:.15rem .35rem">
-          <option value="USDC" selected>USDC</option>
-          <option value="INPI">INPI</option>
-        </select>
-      </label>
-      <small class="muted" id="modeHint"></small>
-    `;
-    parentLabel.after(wrap);
-
-    const modeSel = $("#inpMode");
-    const modeHint = $("#modeHint");
-    const setHints = ()=>{
-      if (STATE.input_mode==="USDC"){
-        modeHint.textContent = "Du gibst die USDC-Summe an. Erwartung zeigt INPI.";
-        if (STATE.presale_min_usdc!=null) inpAmount.min = String(STATE.presale_min_usdc);
-        if (STATE.presale_max_usdc!=null) inpAmount.max = String(STATE.presale_max_usdc);
-      } else {
-        modeHint.textContent = "Du gibst die gewünschte INPI-Menge an. Der Server berechnet die USDC-Summe.";
-        inpAmount.removeAttribute("min"); inpAmount.removeAttribute("max");
-      }
-      if (expectedInpi) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
-    };
-    modeSel.onchange = ()=>{
-      STATE.input_mode = modeSel.value;
-      setHints();
-    };
-    setHints();
-  }
-
-  if (inpAmount && expectedInpi){
-    inpAmount.addEventListener("input", ()=>{
-      const v=Number(inpAmount.value||"0");
-      expectedInpi.textContent = calcExpectedText(v);
-    });
-  }
+if (inpAmount && expectedInpi){
+  inpAmount.addEventListener("input", ()=>{
+    const usdc=Number(inpAmount.value||"0"); expectedInpi.textContent=calcExpectedInpi(usdc);
+  });
 }
-
 if (btnHowTo){
   btnHowTo.addEventListener("click",()=> {
     alert(`Kurzanleitung:
 1) Phantom verbinden
-2) Intent senden → QR(s) scannen (Presale & optional Early-Fee)
-3) Optional: Early-Claim separater Flow (falls nicht über den Intent genutzt)`);
+2) Intent senden → QR oder Deep-Link für USDC-Zahlung
+3) Optional: Early-Claim (1 USDC) mit Signatur bestätigen`);
   });
 }
 
-/* ---------- QR Utils (lokal rendern, kein externer Dienst) ---------- */
-function toCanvasOrSwap(imgEl){
-  if (!imgEl) return null;
-  if (imgEl.tagName === "CANVAS") return imgEl;
-  const c = document.createElement("canvas");
-  c.width = 240; c.height = 240;
-  c.className = imgEl.className || "";
-  c.style.cssText = imgEl.style?.cssText || "";
-  c.id = imgEl.id || "";
-  imgEl.replaceWith(c);
-  return c;
-}
-async function drawQR(imgOrCanvas, text, size=240){
-  if (!text) return;
-  // Falls das referenzierte Element nicht (mehr) im DOM ist → frisches Element per ID ziehen
-  let node = imgOrCanvas;
-  if (!(node && node.isConnected) && node?.id) node = el(node.id);
-  const c = toCanvasOrSwap(node);
-  if (!c) return;
-  await ensureQR();
-  await QRCodeLib.toCanvas(c, text, { width: size, margin: 1 });
-  // Sichtbar machen (IMG hatte evtl. display:none)
-  c.style.display = "block";
-}
-
-/* --- Helper: lokales Ref (hex) + Solana-Pay-URL bauen --- */
-function randomRefHex(len=16){
-  const a = new Uint8Array(len);
-  crypto.getRandomValues(a);
-  return [...a].map(b=>b.toString(16).padStart(2,"0")).join("");
-}
-function buildSolPayURL(recipient, amount, usdcMint, memo, label="INPI Presale", message="INPI Presale Deposit"){
-  const u = new URL(`solana:${recipient}`);
-  u.searchParams.set("amount", String(amount));
-  u.searchParams.set("spl-token", usdcMint);
-  u.searchParams.set("label", label);
-  u.searchParams.set("message", message);
-  u.searchParams.set("memo", memo);
-  return u.toString();
-}
-
-/* ---------- PRESALE INTENT (Nur-QR, mit Optimistic-QR, kein Reload) ---------- */
+/* ---------- PRESALE INTENT ---------- */
 let inFlight=false;
 if (btnPresaleIntent){
-  // falls der Button im HTML type="submit" wäre → wir erzwingen Button-Verhalten
-  btnPresaleIntent.setAttribute("type","button");
-
-  btnPresaleIntent.addEventListener("click", async (e)=>{
-    e?.preventDefault?.();
+  btnPresaleIntent.addEventListener("click", async ()=>{
     if(inFlight) return;
     if(!pubkey) return alert("Bitte zuerst mit Phantom verbinden.");
     if (STATE.presale_state==="closed") return alert("Presale ist geschlossen.");
 
-    // Popup synchron öffnen (nie nach einem await!)
-    const w = openIntentPopup();
+    const usdc = Number(inpAmount?.value || "0");
+    if (!usdc||usdc<=0) return alert("Bitte gültigen USDC-Betrag eingeben.");
+    if (STATE.presale_min_usdc!=null && usdc<STATE.presale_min_usdc) return alert(`Mindestens ${STATE.presale_min_usdc} USDC.`);
+    if (STATE.presale_max_usdc!=null && usdc>STATE.presale_max_usdc) return alert(`Maximal ${STATE.presale_max_usdc} USDC.`);
 
-    const vRaw = Number(inpAmount?.value || "0");
-    if (!vRaw||vRaw<=0) return alert(`Bitte gültigen Betrag eingeben (${STATE.input_mode}).`);
-
-    // Optional: grobe Cap-Prüfung bei USDC-Modus (Server prüft sowieso final)
-    if (STATE.input_mode==="USDC"){
-      if (STATE.presale_min_usdc!=null && vRaw<STATE.presale_min_usdc) return alert(`Mindestens ${STATE.presale_min_usdc} USDC.`);
-      if (STATE.presale_max_usdc!=null && vRaw>STATE.presale_max_usdc) return alert(`Maximal ${STATE.presale_max_usdc} USDC.`);
-    }
-
-    inFlight=true; if (intentMsg) intentMsg.textContent="Erzeuge QR …";
-
-    /* -------- 1) Sofort lokalen „optimistic“ QR zeichnen -------- */
-    let localPayURL = null;
-    try {
-      const recipient = STATE.deposit_owner || CFG.DEPOSIT_OWNER_FALLBACK;
-      if (recipient){
-        const price = currentPriceUSDC();
-        const usdcAmount = STATE.input_mode==="USDC" ? round6(vRaw) : round6((price||0)*vRaw);
-        const memoLocal = `INPI-presale-pre-${randomRefHex(8)}`;
-        const usdcMint = STATE.usdc_mint || CFG.USDC_MINT;
-        localPayURL = buildSolPayURL(recipient, usdcAmount, usdcMint, memoLocal);
-        if (payArea) payArea.style.display="block";
-        const qre = el("inpi-qr");
-        if (qre && localPayURL){ await drawQR(qre, localPayURL, 240); }
-        if (intentMsg) intentMsg.textContent = "QR bereit – Betrag wird serverseitig bestätigt …";
-
-        // → Popup + Cache
-        const cache = {
-          wallet: pubkey.toBase58(),
-          mode: STATE.input_mode,
-          amount: vRaw,
-          optimisticQR: localPayURL
-        };
-        saveIntentCache(cache);
-        safePostToPopup({ type:"optimistic_qr", url: localPayURL, cache });
-      }
-    } catch {}
-
-    /* -------- 2) Parallel: echten Intent holen & QR live ersetzen -------- */
+    inFlight=true; if (intentMsg) intentMsg.textContent="Prüfe Caps & registriere Intent …";
     try{
       // optional signMessage
       let sig_b58=null, msg_str=null;
       if (provider?.signMessage){
-        const payloadLine = (STATE.input_mode==="USDC") ? `amount_usdc=${vRaw}` : `amount_inpi=${vRaw}`;
-        msg_str = `INPI Presale Intent\nwallet=${pubkey.toBase58()}\n${payloadLine}\nts=${Date.now()}`;
+        msg_str = `INPI Presale Intent\nwallet=${pubkey.toBase58()}\namount_usdc=${usdc}\nts=${Date.now()}`;
         const enc=new TextEncoder().encode(msg_str);
         let signed = await provider.signMessage(enc,"utf8").catch(async()=>{ try{ return await provider.signMessage(enc);}catch{ return null; }});
         const signatureBytes = (signed && signed.signature)? signed.signature : signed;
         if (signatureBytes?.length) sig_b58 = bs58Encode(signatureBytes);
       }
 
-      const body = { wallet: pubkey.toBase58(), sig_b58, msg_str };
-      if (STATE.input_mode==="USDC") body.amount_usdc = Number(vRaw);
-      else body.amount_inpi = Number(vRaw);
-
-      const r = await fetch(withVer(`${CFG.API_BASE}/presale/intent`), {
+      const r = await fetch(`${CFG.API_BASE}/presale/intent?t=${Date.now()}`, {
         method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ wallet: pubkey.toBase58(), amount_usdc: usdc, sig_b58, msg_str })
       });
       const j = await r.json().catch(()=>null);
       if (!r.ok || !j?.ok) throw new Error(j?.error || j?.detail || "Intent fehlgeschlagen");
 
-      // Finalen QR anwenden
+      // QR + Deep-Links für die USDC-Zahlung
       const contrib = j?.qr_contribute || {};
-      const finalPayLink = contrib.solana_pay_url || null;
+      lastDeepLinks.contribute = contrib;
+      const qrUrl = contrib.qr_url || j?.qr_url || null;
 
       if (payArea) payArea.style.display="block";
-      const qre2 = el("inpi-qr");
-      if (qre2 && finalPayLink){ await drawQR(qre2, finalPayLink, 240); }
+      if (qrContrib && qrUrl){ qrContrib.src = qrUrl; qrContrib.style.display="block"; }
+      if (aPhantom && contrib.phantom_universal_url){ aPhantom.href = contrib.phantom_universal_url; aPhantom.style.display="inline-block"; }
+      if (aSolflare && contrib.solflare_universal_url){ aSolflare.href = contrib.solflare_universal_url; aSolflare.style.display="inline-block"; }
 
-      // Optional: zweiter QR (Early-Fee)
-      const fee = j?.qr_early_fee;
-      if (fee && fee.solana_pay_url) await renderEarlyFeeInline(fee);
-
-      // UI-Text
       if (intentMsg){
-        const usedUsdc = contrib?.amount_usdc ?? body.amount_usdc ?? null;
-        const usedTxt = usedUsdc!=null ? `${round6(usedUsdc)} USDC` : (STATE.input_mode==="INPI" ? `${vRaw} INPI (Server berechnet USDC)` : `${vRaw} USDC`);
         intentMsg.textContent="";
-        const p1=document.createElement("p"); p1.textContent=`✅ Intent registriert. Bitte ${usedTxt} per QR (SPL-USDC) senden.`;
-        intentMsg.appendChild(p1);
-
-        if (fee){
-          const p2=document.createElement("p"); p2.textContent=`Optional: Early-Claim sofort freischalten – zahle die 1 USDC Fee mit dem zweiten QR.`;
-          intentMsg.appendChild(p2);
-        } else {
-          const p2=document.createElement("p"); p2.textContent=`Optional: Nutze unten den Early-Claim (1 USDC Fee) für sofortige Gutschrift.`;
-          intentMsg.appendChild(p2);
-        }
-        setBonusNote();
+        const p1=document.createElement("p"); p1.textContent=`✅ Intent registriert. Bitte ${usdc} USDC via QR/Link senden (SPL-USDC).`;
+        const p2=document.createElement("p"); p2.textContent=`Optional: Nutze unten den Early-Claim (1 USDC Fee) für sofortige Gutschrift.`;
+        intentMsg.appendChild(p1); intentMsg.appendChild(p2); setBonusNote();
       }
 
-      // → Popup + Cache Update
-      if (finalPayLink){
-        const cache = {
-          wallet: pubkey.toBase58(),
-          mode: STATE.input_mode,
-          amount: vRaw,
-          optimisticQR: localPayURL || null,
-          finalQR: finalPayLink
-        };
-        saveIntentCache(cache);
-        safePostToPopup({ type:"final_qr", url: finalPayLink, cache });
-      }
-      if (fee && fee.solana_pay_url){
-        safePostToPopup({ type:"fee_qr", url: fee.solana_pay_url });
-      }
-
-      if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
       await refreshStatus();
     }catch(e){
-      console.error(e);
-      if (!localPayURL) alert(`Intent fehlgeschlagen:\n${e?.message||e}`);
-      if (intentMsg) intentMsg.textContent = "Intent fehlgeschlagen.";
+      console.error(e); alert(`Intent fehlgeschlagen:\n${e?.message||e}`);
     }finally{ inFlight=false; }
   });
 }
 
-/* ---------- Early-Claim Fee (Nur-QR) ---------- */
+/* ---------- Early Claim ---------- */
 async function startEarlyFlow(){
   if (!pubkey) return alert("Bitte zuerst Wallet verbinden.");
   if (!STATE.early.enabled) return alert("Early-Claim ist derzeit deaktiviert.");
   try{
-    if (earlyArea) earlyArea.style.display = "block";
-    if (earlyMsg) earlyMsg.textContent="Erzeuge Solana-Pay QR …";
-    const r = await fetch(withVer(`${CFG.API_BASE}/claim/early-intent`), {
+    earlyArea && (earlyArea.style.display = "block");
+    if (earlyMsg) earlyMsg.textContent="Erzeuge Solana-Pay Link …";
+    const r = await fetch(`${CFG.API_BASE}/claim/early-intent`, {
       method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
       body: JSON.stringify({ wallet: pubkey.toBase58() })
     });
     const j = await r.json().catch(()=>null);
     if (!r.ok || !j?.ok) throw new Error(j?.error || "Early-Intent fehlgeschlagen");
 
-    const payLink = j.solana_pay_url || null;
+    const qrUrl = j.qr_url || null;
+    lastDeepLinks.claimNow = {
+      solana_pay_url: j.solana_pay_url || null,
+      phantom_universal_url: j.solana_pay_url ? `https://phantom.app/ul/v1/solana-pay?link=${encodeURIComponent(j.solana_pay_url)}` : null,
+      solflare_universal_url: j.solana_pay_url ? `https://solflare.com/ul/v1/solana-pay?link=${encodeURIComponent(j.solana_pay_url)}` : null
+    };
 
-    const qe = el("early-qr");
-    if (qe && payLink) { await drawQR(qe, payLink, 240); }
-    if (earlyMsg) earlyMsg.textContent = `Sende ${STATE.early.flat_usdc} USDC (QR scannen). Danach unten die Transaktions-Signatur eintragen und bestätigen.`;
+    if (qrClaimNow && qrUrl) { qrClaimNow.src = qrUrl; qrClaimNow.style.display="block"; }
+    if (earlyMsg) earlyMsg.textContent = `Sende ${STATE.early.flat_usdc} USDC (QR oder Link). Danach unten die Transaktions-Signatur eintragen und bestätigen.`;
   }catch(e){ console.error(e); alert(e?.message||e); }
 }
 async function confirmEarlyFee(){
@@ -967,7 +658,7 @@ async function confirmEarlyFee(){
   if (!sig) return alert("Bitte die Transaktions-Signatur der Fee-Zahlung eintragen.");
   try{
     if (earlyMsg) earlyMsg.textContent="Prüfe Zahlung & queued Claim …";
-    const r = await fetch(withVer(`${CFG.API_BASE}/claim/confirm`), {
+    const r = await fetch(`${CFG.API_BASE}/claim/confirm`, {
       method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
       body: JSON.stringify({ wallet: pubkey.toBase58(), fee_signature: sig })
     });
@@ -978,48 +669,16 @@ async function confirmEarlyFee(){
   }catch(e){ console.error(e); alert(e?.message||e); if (earlyMsg) earlyMsg.textContent="Fehler bei der Bestätigung."; }
 }
 
-/* ---------- Early-Fee QR Inline im Presale-Bereich (Nur-QR) ---------- */
-async function renderEarlyFeeInline(fee){
-  let feeBox = document.getElementById("inlineFeeBox");
-  if (!feeBox){
-    feeBox = document.createElement("div");
-    feeBox.id = "inlineFeeBox";
-    feeBox.className = "card";
-    feeBox.style.marginTop = ".8rem";
-    feeBox.innerHTML = `
-      <h3>Optional: Early-Claim Fee (1&nbsp;USDC)</h3>
-      <div class="row" style="gap:1rem;align-items:center;flex-wrap:wrap">
-        <img id="fee-qr" alt="Scan & pay Early-Claim Fee" width="240" height="240" class="qr"/>
-        <div class="col">
-          <p class="muted" id="feeMsg">Scanne den QR und zahle 1&nbsp;USDC, um deinen Early-Claim zu aktivieren.</p>
-        </div>
-      </div>
-    `;
-    if (payArea) payArea.appendChild(feeBox);
-  }
-  const img = document.getElementById("fee-qr");
-  if (img && fee?.solana_pay_url){ await drawQR(img, fee.solana_pay_url, 240); }
-}
-
 /* ---------- Base58 (encode) ---------- */
 const B58_ALPH = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 function bs58Encode(bytes){
   if (!(bytes&&bytes.length)) return "";
   let zeros=0; while(zeros<bytes.length && bytes[zeros]===0) zeros++;
   let n=0n; for (const b of bytes) n = (n<<8n) + BigInt(b);
-  let out="";
-  while(n>0n){
-    const rem=Number(n%58n);
-    out = B58_ALPH[rem]+out;
-    n = n/58n;
-  }
+  let out=""; while(n>0n){ const rem=Number(n%58n); out = B58_ALPH[rem]+out; n = n/58n; }
   for (let i=0;i<zeros;i++) out="1"+out;
   return out || "1".repeat(zeros);
 }
 
 /* ---------- Boot ---------- */
-window.addEventListener("DOMContentLoaded", ()=>{
-  console.log("INPI app version:", APP_VERSION);
-  init().catch(console.error);
-});
-</script>
+window.addEventListener("DOMContentLoaded", ()=>{ init().catch(console.error); });
