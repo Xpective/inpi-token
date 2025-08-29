@@ -17,7 +17,6 @@
     deposit_ata:null, deposit_owner:null
   };
 
-  const Connection = window.solanaWeb3?.Connection;
   let conn=null, provider=null, pubkey=null;
 
   async function loadCfg(){
@@ -27,11 +26,12 @@
     CFG.INPI = c.INPI_MINT;
     CFG.USDC = c.USDC_MINT;
     CFG.GATE = c.GATE_NFT_MINT || c.GATE_MINT || "";
-    // marketplace links
-    el("lnTensor").href = "https://www.tensor.trade/item/"+encodeURIComponent(CFG.GATE);
-    el("lnME").href     = "https://magiceden.io/item-details/"+encodeURIComponent(CFG.GATE);
-    el("lnInpiSS").href = "https://solscan.io/token/"+encodeURIComponent(CFG.INPI);
-    el("lnUsdcSS").href = "https://solscan.io/token/"+encodeURIComponent(CFG.USDC);
+
+    // marketplace / explorer links
+    const lnTensor = el("lnTensor"); if (lnTensor) lnTensor.href = "https://www.tensor.trade/item/"+encodeURIComponent(CFG.GATE);
+    const lnME     = el("lnME");     if (lnME)     lnME.href     = "https://magiceden.io/item-details/"+encodeURIComponent(CFG.GATE);
+    const lnInpiSS = el("lnInpiSS"); if (lnInpiSS) lnInpiSS.href = "https://solscan.io/token/"+encodeURIComponent(CFG.INPI);
+    const lnUsdcSS = el("lnUsdcSS"); if (lnUsdcSS) lnUsdcSS.href = "https://solscan.io/token/"+encodeURIComponent(CFG.USDC);
   }
 
   async function status(){
@@ -69,28 +69,31 @@
       buy:     j.dist_buyback_reserve_bps || 800
     };
 
-    el("st").textContent = STATE.presale;
-    el("ata").textContent = STATE.deposit_ata || "—";
-    el("owner").textContent = STATE.deposit_owner || "—";
+    const st = el("st");     if (st) st.textContent = STATE.presale;
+    const ata = el("ata");   if (ata) ata.textContent = STATE.deposit_ata || "—";
+    const own = el("owner"); if (own) own.textContent = STATE.deposit_owner || "—";
 
     renderPrice();
     renderTGE();
     renderTokenomics();
-    el("early").style.display = STATE.early.enabled ? "block" : "none";
+    const earlyBox = el("early"); if (earlyBox) earlyBox.style.display = STATE.early.enabled ? "block" : "none";
   }
 
   function renderPrice(){
-    const active = STATE.gate ? (STATE.pWith ?? STATE.pWo) : (STATE.pWo ?? STATE.pWith);
+    const active = currentPrice();
     const txt = [
       "mit NFT:", STATE.pWith? STATE.pWith.toFixed(6)+" USDC":"–",
       "• ohne NFT:", STATE.pWo? STATE.pWo.toFixed(6)+" USDC":"–",
       "• aktiv:", active? active.toFixed(6)+" USDC":"–"
     ].join(" ");
-    el("price").textContent = txt;
-    el("gateBadge").textContent = STATE.gate ? "(NFT-Rabatt aktiv ✓)" : "(kein NFT-Rabatt)";
+    const p = el("price"); if (p) p.textContent = txt;
+    const badge = el("gateBadge");
+    if (badge) badge.textContent = STATE.gate ? "(NFT-Rabatt aktiv ✓)" : "(kein NFT-Rabatt)";
   }
+
   function renderTGE(){
     const n = el("tge");
+    if (!n) return;
     if (!STATE.tge){ n.textContent="tbd"; return; }
     const secs = Math.max(0, STATE.tge - now());
     const d=Math.floor(secs/86400), h=Math.floor(secs%86400/3600), m=Math.floor(secs%3600/60), s=secs%60;
@@ -99,7 +102,7 @@
   setInterval(()=>STATE.tge && renderTGE(), 1000);
 
   function renderTokenomics(){
-    el("tot").textContent = fmti(STATE.supply);
+    const t = el("tot"); if (t) t.textContent = fmti(STATE.supply);
     const rows = [
       ["Presale", STATE.dist.presale],
       ["DEX Liquidity", STATE.dist.dex],
@@ -117,8 +120,10 @@
       if (name==="Presale") pres=inpi;
       html += `<tr><td>${name}</td><td>${fmti(bps)}</td><td>${pct}</td><td>${fmti(inpi)}</td></tr>`;
     });
-    el("trows").innerHTML = html;
-    el("pres").textContent = `${fmti(pres)} INPI (${(STATE.dist.presale/100).toFixed(2)}%)`;
+    const tbody = el("trows");
+    if (tbody) tbody.innerHTML = html;
+    const presTxt = el("pres");
+    if (presTxt) presTxt.textContent = `${fmti(pres)} INPI (${(STATE.dist.presale/100).toFixed(2)}%)`;
   }
 
   // Phantom
@@ -130,31 +135,111 @@
 
   // QR
   async function drawQR(canvas, text){
-    if (!text) return;
+    if (!canvas || !text) return;
     await window.QRCode.toCanvas(canvas, text, { width: 240, margin:1 });
   }
 
-  function currentPrice(){
-    const a = STATE.gate ? (STATE.pWith ?? STATE.pWo) : (STATE.pWo ?? STATE.pWith);
-    return a || 0;
+  // ======= NEW: On-chain helpers (SPL + Token-2022 Fallback) =======
+  async function getTokenUiAmountOnChain(ownerStr, mintStr){
+    if (!conn) return 0;
+    try{
+      const owner = new window.solanaWeb3.PublicKey(ownerStr);
+      const mint  = new window.solanaWeb3.PublicKey(mintStr);
+      let total = 0;
+
+      // klassisches SPL via mint
+      const res1 = await conn.getParsedTokenAccountsByOwner(owner, { mint }, { commitment: "confirmed" });
+      for (const v of (res1?.value||[])){
+        const amt = v?.account?.data?.parsed?.info?.tokenAmount?.uiAmount;
+        total += Number(amt || 0);
+      }
+      if (total > 0) return total;
+
+      // Token-2022 via programId + Filter auf mint
+      const prog2022 = new window.solanaWeb3.PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+      const res2 = await conn.getParsedTokenAccountsByOwner(owner, { programId: prog2022 }, { commitment: "confirmed" });
+      for (const v of (res2?.value||[])){
+        const info = v?.account?.data?.parsed?.info;
+        if (info?.mint === mintStr){
+          total += Number(info?.tokenAmount?.uiAmount || 0);
+        }
+      }
+      return total;
+    } catch { return 0; }
   }
-  function updateExpected(){
-    const v = Number(el("amt").value || "0");
-    const mode = el("mode").value;
-    const p = currentPrice();
-    if (!v || !p){ el("exp").textContent="–"; return; }
-    el("exp").textContent = mode==="USDC" ? `${fmt(v/p,0)} INPI` : `~ ${fmt(v*p,6)} USDC`;
+  async function hasNftOnChain(ownerStr, nftMintStr){
+    if (!ownerStr || !nftMintStr) return false;
+    const amt = await getTokenUiAmountOnChain(ownerStr, nftMintStr).catch(()=>0);
+    return amt > 0;
   }
 
-  // Balances + Gate (leichtgew.)
+  // ======= NEW: robustere Preiswahl (mit/ohne NFT) =======
+  function currentPrice(){
+    const w  = STATE.pWith; // Preis mit NFT
+    const wo = STATE.pWo;   // Preis ohne NFT
+    return STATE.gate
+      ? (Number.isFinite(w)  ? w  : wo)
+      : (Number.isFinite(wo) ? wo : w);
+  }
+
+  function updateExpected(){
+    const amtEl = el("amt"), modeEl = el("mode"), expEl = el("exp");
+    if (!amtEl || !modeEl || !expEl) return;
+    const v = Number(amtEl.value || "0");
+    const mode = modeEl.value;
+    const p = currentPrice();
+    if (!v || !p){ expEl.textContent="–"; return; }
+    expEl.textContent = mode==="USDC" ? `${fmt(v/p,0)} INPI` : `~ ${fmt(v*p,6)} USDC`;
+  }
+
+  // ======= NEW: Balances + Gate (on-chain first, API fallback) =======
   async function refreshBalances(){
     if (!pubkey) return;
+
+    const usdcNode = el("usdcBal") || el("usdc");
+    const inpiNode = el("inpiBal") || el("inpi");
+
+    // 1) On-chain first
     try{
-      const r = await fetch(`${CFG.API}/wallet/balances?wallet=${pubkey.toBase58()}&t=${Date.now()}`);
-      const j = await r.json();
-      STATE.gate = !!j.gate_ok;
+      const usdcMint = STATE.usdc || CFG.USDC;
+      const inpiMint = STATE.inpi || CFG.INPI;
+
+      const [usdcOC, inpiOC] = await Promise.all([
+        getTokenUiAmountOnChain(pubkey.toBase58(), usdcMint),
+        getTokenUiAmountOnChain(pubkey.toBase58(), inpiMint),
+      ]);
+
+      if (usdcNode) usdcNode.textContent = fmt(usdcOC, 2);
+      if (inpiNode) inpiNode.textContent = fmt(inpiOC, 0);
+
+      // NFT-Gate check on-chain
+      const gate = await hasNftOnChain(pubkey.toBase58(), CFG.GATE).catch(()=>false);
+      STATE.gate = !!gate;
+
       renderPrice();
-    }catch{ STATE.gate = false; renderPrice(); }
+      updateExpected();
+      return; // fertig
+    } catch(e){
+      // weiter zum API-Fallback
+    }
+
+    // 2) Fallback: API
+    try{
+      const url = `${CFG.API}/wallet/balances?wallet=${encodeURIComponent(pubkey.toBase58())}&t=${Date.now()}`;
+      const r = await fetch(url, { headers:{accept:"application/json"}});
+      const j = await r.json();
+
+      const usdc = Number(j?.usdc?.uiAmount ?? 0);
+      const inpi = Number(j?.inpi?.uiAmount ?? 0);
+      if (usdcNode) usdcNode.textContent = fmt(usdc,2);
+      if (inpiNode) inpiNode.textContent = fmt(inpi,0);
+
+      STATE.gate = !!j?.gate_ok;
+      renderPrice();
+      updateExpected();
+    } catch(e){
+      // leise scheitern
+    }
   }
 
   // Intent Flow (ohne Popup)
@@ -162,16 +247,18 @@
     if (!pubkey) return alert("Bitte Wallet verbinden.");
     if (STATE.presale==="closed") return alert("Presale ist geschlossen.");
 
-    const v = Number(el("amt").value||"0");
-    const mode = el("mode").value;
+    const amtEl = el("amt"), modeEl = el("mode"), msg = el("msg"), payRow = el("payRow");
+    if (!amtEl || !modeEl) return;
+    const v = Number(amtEl.value||"0");
+    const mode = modeEl.value;
     if (!v || v<=0) return alert(`Bitte gültigen Betrag (${mode}) eingeben.`);
     if (mode==="USDC"){
       if (STATE.min!=null && v<STATE.min) return alert(`Mindestens ${STATE.min} USDC.`);
       if (STATE.max!=null && v>STATE.max) return alert(`Maximal ${STATE.max} USDC.`);
     }
 
-    el("msg").textContent = "Erzeuge QR …";
-    el("payRow").style.display = "block";
+    if (msg) msg.textContent = "Erzeuge QR …";
+    if (payRow) payRow.style.display = "block";
 
     // 1) Optimistic QR (lokal)
     try{
@@ -187,7 +274,7 @@
         u.searchParams.set("message", "INPI Presale Deposit");
         u.searchParams.set("memo", memo);
         await drawQR(el("qr"), u.toString());
-        el("msg").textContent = "QR bereit – bestätige Betrag vom Server …";
+        if (msg) msg.textContent = "QR bereit – bestätige Betrag vom Server …";
       }
     }catch{}
 
@@ -208,17 +295,17 @@
       const link = j.qr_contribute?.solana_pay_url || null;
       if (link) await drawQR(el("qr"), link);
       const used = j.qr_contribute?.amount_usdc ?? body.amount_usdc ?? null;
-      el("msg").textContent = used!=null ? `✅ Intent registriert. Bitte ${used} USDC senden.` : "✅ Intent registriert.";
+      if (msg) msg.textContent = used!=null ? `✅ Intent registriert. Bitte ${used} USDC senden.` : "✅ Intent registriert.";
 
       // optional Early-Fee QR inline
       if (j.qr_early_fee?.solana_pay_url){
-        el("early").style.display = "block"; // sicherstellen
-        el("earRow").style.display = "block";
+        const earlyBox = el("early"); if (earlyBox) earlyBox.style.display = "block";
+        const earRow = el("earRow");  if (earRow) earRow.style.display = "block";
         await drawQR(el("qrEarly"), j.qr_early_fee.solana_pay_url);
-        el("emsg").textContent = `Optional: 1 USDC Early-Fee scannen.`;
+        const emsg = el("emsg"); if (emsg) emsg.textContent = `Optional: 1 USDC Early-Fee scannen.`;
       }
     }catch(e){
-      el("msg").textContent = "Intent fehlgeschlagen.";
+      if (msg) msg.textContent = "Intent fehlgeschlagen.";
       alert(String(e?.message||e));
     }
   }
@@ -227,8 +314,8 @@
   async function startEarly(){
     if (!pubkey) return alert("Bitte Wallet verbinden.");
     if (!STATE.early.enabled) return alert("Early-Claim ist deaktiviert.");
-    el("earRow").style.display = "block";
-    el("emsg").textContent = "Erzeuge Early-QR …";
+    const earRow = el("earRow"); if (earRow) earRow.style.display = "block";
+    const emsg = el("emsg"); if (emsg) emsg.textContent = "Erzeuge Early-QR …";
     const r = await fetch(`${CFG.API}/claim/early-intent?t=${Date.now()}`, {
       method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
       body: JSON.stringify({ wallet: pubkey.toBase58() })
@@ -236,59 +323,65 @@
     const j = await r.json();
     if (!r.ok || !j?.ok) { alert(j?.error||"Fehler"); return; }
     await drawQR(el("qrEarly"), j.solana_pay_url);
-    el("emsg").textContent = `Sende ${STATE.early.flat} USDC und bestätige unten die Signatur.`;
+    if (emsg) emsg.textContent = `Sende ${STATE.early.flat} USDC und bestätige unten die Signatur.`;
   }
   async function confirmEarly(){
     if (!pubkey) return alert("Wallet verbinden.");
-    const sig = (el("feeSig").value||"").trim();
+    const sigEl = el("feeSig"); const emsg = el("emsg");
+    const sig = (sigEl?.value||"").trim();
     if (!sig) return alert("Bitte Fee-Transaktions-Signatur eintragen.");
-    el("emsg").textContent = "Prüfe Zahlung & queue Claim …";
+    if (emsg) emsg.textContent = "Prüfe Zahlung & queue Claim …";
     const r = await fetch(`${CFG.API}/claim/confirm?t=${Date.now()}`, {
       method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
       body: JSON.stringify({ wallet: pubkey.toBase58(), fee_signature: sig })
     });
     const j = await r.json();
-    if (!r.ok || !j?.ok) { alert(j?.error||"Fehler"); el("emsg").textContent="Fehler bei Bestätigung."; return; }
-    el("emsg").textContent = `✅ Claim eingereiht (Job ${j.job_id||"n/a"}).`;
+    if (!r.ok || !j?.ok) { alert(j?.error||"Fehler"); if (emsg) emsg.textContent="Fehler bei Bestätigung."; return; }
+    if (emsg) emsg.textContent = `✅ Claim eingereiht (Job ${j.job_id||"n/a"}).`;
   }
 
   function bindUI(){
-    el("btnHow").onclick = ()=> alert("Kurz: 1) Wallet verbinden  2) Betrag eingeben  3) QR scannen (USDC)  4) optional: Early-Fee 1 USDC scannen & Signatur bestätigen.");
-    el("btnIntent").onclick = onIntent;
-    el("btnEarly").onclick  = startEarly;
-    el("btnConfirm").onclick= confirmEarly;
-    el("amt").oninput = updateExpected;
-    el("mode").onchange = updateExpected;
+    const btnHow = el("btnHow"); if (btnHow) btnHow.onclick = ()=> alert("Kurz: 1) Wallet verbinden  2) Betrag eingeben  3) QR scannen (USDC)  4) optional: Early-Fee 1 USDC scannen & Signatur bestätigen.");
+    const btnIntent = el("btnIntent"); if (btnIntent) btnIntent.onclick = onIntent;
+    const btnEarly  = el("btnEarly");  if (btnEarly)  btnEarly.onclick  = startEarly;
+    const btnConfirm= el("btnConfirm");if (btnConfirm)btnConfirm.onclick= confirmEarly;
+    const amt = el("amt"); if (amt) amt.oninput = updateExpected;
+    const mode = el("mode"); if (mode) mode.onchange = updateExpected;
   }
 
   async function connectIfPossible(){
     provider = getProvider();
+    const btn = el("btnConnect");
+    const waddr = el("waddr");
     if (!provider){
-      el("btnConnect").textContent = "Phantom installieren";
-      el("btnConnect").onclick = ()=> window.open("https://phantom.app","_blank","noopener");
+      if (btn){ btn.textContent = "Phantom installieren"; btn.onclick = ()=> window.open("https://phantom.app","_blank","noopener"); }
       return;
     }
-    el("btnConnect").disabled=false;
-    el("btnConnect").textContent="Verbinden";
-    el("btnConnect").onclick = async ()=>{
-      try{
-        const { publicKey } = await provider.connect();
-        pubkey = publicKey;
-        el("waddr").textContent = publicKey.toBase58();
-        await refreshBalances();
-      }catch(e){ alert("Wallet-Verbindung abgebrochen."); }
-    };
-    // try silent
+    if (btn){
+      btn.disabled=false; btn.textContent="Verbinden";
+      btn.onclick = async ()=>{
+        try{
+          const { publicKey } = await provider.connect();
+          pubkey = publicKey;
+          if (waddr) waddr.textContent = publicKey.toBase58();
+          await refreshBalances();
+        }catch(e){ alert("Wallet-Verbindung abgebrochen."); }
+      };
+    }
+    // silent connect
     try{
       const res = await provider.connect({ onlyIfTrusted:true }).catch(()=>null);
       if (res?.publicKey){
         pubkey = res.publicKey;
-        el("waddr").textContent = pubkey.toBase58();
+        if (waddr) waddr.textContent = pubkey.toBase58();
         await refreshBalances();
       }
     }catch{}
-    provider?.on?.("accountChanged", pk=>{ if(!pk){ pubkey=null; el("waddr").textContent="—"; } else { pubkey=pk; el("waddr").textContent=pk.toBase58(); refreshBalances(); }});
-    provider?.on?.("disconnect", ()=>{ pubkey=null; el("waddr").textContent="—"; });
+    provider?.on?.("accountChanged", pk=>{
+      if(!pk){ pubkey=null; if (waddr) waddr.textContent="—"; }
+      else { pubkey=pk; if (waddr) waddr.textContent=pk.toBase58(); refreshBalances(); }
+    });
+    provider?.on?.("disconnect", ()=>{ pubkey=null; if (waddr) waddr.textContent="—"; });
   }
 
   async function boot(){
@@ -299,9 +392,13 @@
       conn = new window.solanaWeb3.Connection(STATE.rpc, "confirmed");
     }
     await connectIfPossible();
+
     // min/max Hinweise für USDC-Eingabe
-    if (STATE.min!=null) el("amt").min = String(STATE.min);
-    if (STATE.max!=null) el("amt").max = String(STATE.max);
+    const amt = el("amt");
+    if (amt){
+      if (STATE.min!=null) amt.min = String(STATE.min);
+      if (STATE.max!=null) amt.max = String(STATE.max);
+    }
     updateExpected();
   }
 
