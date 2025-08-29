@@ -1,7 +1,6 @@
-<!-- Stelle sicher, dass diese Datei unter /token/app.js eingebunden ist -->
 <script>
 /* ===========================================
-   Inpinity Token – Frontend (Phantom-first)
+   Inpinity Token – Frontend (Nur-QR, keine Links)
    Pfad: /pages/token/app.js
    =========================================== */
 
@@ -60,7 +59,7 @@ const CFG = {
 
 /* ================ SOLANA / PHANTOM ================ */
 let Connection = null; // wird nachgeladen
-let QRCodeLib = null; // wird nachgeladen
+let QRCodeLib = null;  // wird nachgeladen
 
 const $ = (sel) => document.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -250,10 +249,6 @@ const btnCopyDeposit = $("#btnCopyDeposit");
 const payArea = $("#payArea");
 const qrContrib = $("#inpi-qr"); // <img> – wird zu <canvas> ersetzt
 
-// Deep-Links
-const aPhantom = $("#link-phantom");
-const aSolflare = $("#link-solflare");
-
 // Early Claim
 const earlyBox = $("#earlyBox");
 const btnClaim = $("#btnClaim");
@@ -273,7 +268,6 @@ if (p0?.parentElement) p0.parentElement.appendChild(gateBadge);
 /* ---------- State ---------- */
 let connection = null, currentRpcUrl = null, provider = null, pubkey = null, POLL = null;
 let listenersAttached = false;
-let lastGateCheckTs = 0;
 
 const STATE = {
   rpc_url: null, inpi_mint: null, usdc_mint: null,
@@ -601,9 +595,7 @@ async function refreshClaimStatus(){
   if (!pubkey) return;
   try{
     const r = await fetch(`${CFG.API_BASE}/claim/status?wallet=${pubkey.toBase58()}&t=${Date.now()}`, { headers:{accept:"application/json"} });
-    if (!r.ok) throw new Error(`API ${r.status}`);
     const st = await r.json();
-
     const pending = Number(st?.pending_inpi || 0);
     STATE.claimable_inpi = pending;
     const earlyExpected = $("#earlyExpected");
@@ -697,7 +689,7 @@ if (btnHowTo){
   btnHowTo.addEventListener("click",()=> {
     alert(`Kurzanleitung:
 1) Phantom verbinden
-2) Intent senden → QRs / Deep-Links nutzen (Presale & optional Early-Fee)
+2) Intent senden → QR(s) scannen (Presale & optional Early-Fee)
 3) Optional: Early-Claim separater Flow (falls nicht über den Intent genutzt)`);
   });
 }
@@ -720,7 +712,7 @@ async function drawQR(imgOrCanvas, text, size=240){
   await QRCodeLib.toCanvas(c, text, { width: size, margin: 1 });
 }
 
-/* ---------- PRESALE INTENT ---------- */
+/* ---------- PRESALE INTENT (Nur-QR) ---------- */
 let inFlight=false;
 if (btnPresaleIntent){
   btnPresaleIntent.addEventListener("click", async ()=>{
@@ -763,15 +755,12 @@ if (btnPresaleIntent){
       const j = await r.json().catch(()=>null);
       if (!r.ok || !j?.ok) throw new Error(j?.error || j?.detail || "Intent fehlgeschlagen");
 
-      // QR + Deep-Links für die USDC-Zahlung (lokal zeichnen)
+      // QR für die USDC-Zahlung (Nur-QR)
       const contrib = j?.qr_contribute || {};
       const payLink = contrib.solana_pay_url || null;
 
       if (payArea) payArea.style.display="block";
       if (qrContrib && payLink){ await drawQR(qrContrib, payLink, 240); }
-
-      if (aPhantom && contrib.phantom_universal_url){ aPhantom.href = contrib.phantom_universal_url; aPhantom.style.display="inline-block"; }
-      if (aSolflare && contrib.solflare_universal_url){ aSolflare.href = contrib.solflare_universal_url; aSolflare.style.display="inline-block"; }
 
       // Zweiter QR: Early-Claim-Fee (falls geliefert)
       const fee = j?.qr_early_fee;
@@ -782,7 +771,7 @@ if (btnPresaleIntent){
         const usedUsdc = contrib?.amount_usdc ?? body.amount_usdc ?? null;
         const usedTxt = usedUsdc!=null ? `${round6(usedUsdc)} USDC` : (STATE.input_mode==="INPI" ? `${v} INPI (Server berechnet USDC)` : `${v} USDC`);
         intentMsg.textContent="";
-        const p1=document.createElement("p"); p1.textContent=`✅ Intent registriert. Bitte ${usedTxt} via QR/Link senden (SPL-USDC).`;
+        const p1=document.createElement("p"); p1.textContent=`✅ Intent registriert. Bitte ${usedTxt} per QR (SPL-USDC) senden.`;
         intentMsg.appendChild(p1);
 
         if (fee){
@@ -804,13 +793,13 @@ if (btnPresaleIntent){
   });
 }
 
-/* ---------- Early-Claim Fee (separater Flow bleibt) ---------- */
+/* ---------- Early-Claim Fee (Nur-QR) ---------- */
 async function startEarlyFlow(){
   if (!pubkey) return alert("Bitte zuerst Wallet verbinden.");
   if (!STATE.early.enabled) return alert("Early-Claim ist derzeit deaktiviert.");
   try{
     earlyArea && (earlyArea.style.display = "block");
-    if (earlyMsg) earlyMsg.textContent="Erzeuge Solana-Pay Link …";
+    if (earlyMsg) earlyMsg.textContent="Erzeuge Solana-Pay QR …";
     const r = await fetch(`${CFG.API_BASE}/claim/early-intent`, {
       method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
       body: JSON.stringify({ wallet: pubkey.toBase58() })
@@ -821,14 +810,7 @@ async function startEarlyFlow(){
     const payLink = j.solana_pay_url || null;
 
     if (qrClaimNow && payLink) { await drawQR(qrClaimNow, payLink, 240); }
-    if (earlyMsg) earlyMsg.textContent = `Sende ${STATE.early.flat_usdc} USDC (QR oder Link). Danach unten die Transaktions-Signatur eintragen und bestätigen.`;
-
-    // Deep-Links optional weiterhin sichtbar
-    const pUL = j.phantom_universal_url || (payLink ? `https://phantom.app/ul/v1/solana-pay?link=${encodeURIComponent(payLink)}` : null);
-    const sUL = j.solflare_universal_url || (payLink ? `https://solflare.com/ul/v1/solana-pay?link=${encodeURIComponent(payLink)}` : null);
-    const aP = $("#link-phantom-fee"), aS = $("#link-solflare-fee");
-    if (aP && pUL){ aP.href = pUL; aP.style.display="inline-block"; }
-    if (aS && sUL){ aS.href = sUL; aS.style.display="inline-block"; }
+    if (earlyMsg) earlyMsg.textContent = `Sende ${STATE.early.flat_usdc} USDC (QR scannen). Danach unten die Transaktions-Signatur eintragen und bestätigen.`;
   }catch(e){ console.error(e); alert(e?.message||e); }
 }
 async function confirmEarlyFee(){
@@ -848,7 +830,7 @@ async function confirmEarlyFee(){
   }catch(e){ console.error(e); alert(e?.message||e); if (earlyMsg) earlyMsg.textContent="Fehler bei der Bestätigung."; }
 }
 
-/* ---------- Early-Fee QR Inline im Presale-Bereich ---------- */
+/* ---------- Early-Fee QR Inline im Presale-Bereich (Nur-QR) ---------- */
 async function renderEarlyFeeInline(fee){
   let feeBox = document.getElementById("inlineFeeBox");
   if (!feeBox){
@@ -859,22 +841,16 @@ async function renderEarlyFeeInline(fee){
     feeBox.innerHTML = `
       <h3>Optional: Early-Claim Fee (1&nbsp;USDC)</h3>
       <div class="row" style="gap:1rem;align-items:center;flex-wrap:wrap">
-        <img id="fee-qr" alt="Scan & pay Early-Claim Fee" width="240" height="240" class="qr" style="display:none"/>
+        <img id="fee-qr" alt="Scan & pay Early-Claim Fee" width="240" height="240" class="qr"/>
         <div class="col">
-          <p class="muted" id="feeMsg">Zahle die 1&nbsp;USDC Fee, um deine INPI vor TGE gutzuschreiben.</p>
-          <div class="row" style="gap:.5rem;flex-wrap:wrap;margin-top:.25rem">
-            <a id="link-phantom-fee"  class="btn secondary" href="#" target="_blank" rel="noopener" style="display:none">In&nbsp;Phantom&nbsp;öffnen</a>
-            <a id="link-solflare-fee" class="btn secondary" href="#" target="_blank" rel="noopener" style="display:none">In&nbsp;Solflare&nbsp;öffnen</a>
-          </div>
+          <p class="muted" id="feeMsg">Scanne den QR und zahle 1&nbsp;USDC, um deinen Early-Claim zu aktivieren.</p>
         </div>
       </div>
     `;
     payArea && payArea.appendChild(feeBox);
   }
-  const img = $("#fee-qr");
-  if (img && fee?.solana_pay_url){ await drawQR(img, fee.solana_pay_url, 240); img.style.display="block"; }
-  const aP = $("#link-phantom-fee"); if (aP && fee?.phantom_universal_url){ aP.href = fee.phantom_universal_url; aP.style.display="inline-block"; }
-  const aS = $("#link-solflare-fee"); if (aS && fee?.solflare_universal_url){ aS.href = fee.solflare_universal_url; aS.style.display="inline-block"; }
+  const img = document.getElementById("fee-qr");
+  if (img && fee?.solana_pay_url){ await drawQR(img, fee.solana_pay_url, 240); }
 }
 
 /* ---------- Base58 (encode) ---------- */
@@ -883,10 +859,10 @@ function bs58Encode(bytes){
   if (!(bytes&&bytes.length)) return "";
   let zeros=0; while(zeros<bytes.length && bytes[zeros]===0) zeros++;
   let n=0n; for (const b of bytes) n = (n<<8n) + BigInt(b);
-  let out=""; 
-  while(n>0n){ 
-    const rem=Number(n%58n); 
-    out = B58_ALPH[rem]+out; 
+  let out="";
+  while(n>0n){
+    const rem=Number(n%58n);
+    out = B58_ALPH[rem]+out;
     n = n/58n;
   }
   for (let i=0;i<zeros;i++) out="1"+out;
