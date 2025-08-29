@@ -405,39 +405,6 @@ async function handleStatus(env: Env, corsHeaders: Record<string,string>) {
   }, 200, corsHeaders);
 }
 
-async function handleBalances(env: Env, url: URL, corsHeaders: Record<string,string>) {
-  const wallet = url.searchParams.get("wallet") || "";
-  if (!wallet) return JSON_OK({ error: "wallet required" }, 400, corsHeaders);
-
-  try {
-    // minimale Base58-Validierung (grobe Form)
-    if (!/^[1-9A-HJ-NP-Za-km-z]{32,60}$/.test(wallet)) {
-      return JSON_OK({ usdc:{uiAmount:0}, inpi:{uiAmount:0}, gate_ok:false, error:"invalid wallet" }, 200, corsHeaders);
-    }
-
-    const [usdc, inpi, gate] = await Promise.all([
-      getTokenUiAmount(env, wallet, env.USDC_MINT),
-      getTokenUiAmount(env, wallet, env.INPI_MINT),
-      hasNft(env, wallet, env.GATE_NFT_MINT)
-    ]);
-    return JSON_OK({ usdc: { uiAmount: usdc }, inpi: { uiAmount: inpi }, gate_ok: !!gate }, 200, corsHeaders);
-  } catch (e: any) {
-    // WICHTIG: nie 500 – immer 200 mit erklärendem Feld
-    return JSON_OK({
-      usdc:{ uiAmount: 0 },
-      inpi:{ uiAmount: 0 },
-      gate_ok:false,
-      server_error: String(e?.message || e)
-    }, 200, corsHeaders);
-  }
-}
-
-async function handleClaimStatus(env: Env, url: URL, corsHeaders: Record<string,string>) {
-  const wallet = url.searchParams.get("wallet") || "";
-  if (!wallet) return JSON_OK({ error:"wallet required" }, 400, corsHeaders);
-  const raw = await env.KV_CLAIMS.get(`claimable:${wallet}`);
-  return JSON_OK({ pending_inpi: raw ? parseFloat(raw) : 0 }, 200, corsHeaders);
-}
 
 /**
  * Presale-Intent:
