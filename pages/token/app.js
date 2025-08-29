@@ -4,9 +4,12 @@
    Pfad: /pages/token/app.js
    =========================================== */
 
+/* ==================== BUILD/VERSION (Cache-Busting) ==================== */
+const APP_VERSION = "v-2025-08-29-001";
+try { window.__INPI_APP_VERSION__ = APP_VERSION; } catch {}
+
 /* ==================== KONFIG ==================== */
 const CFG = {
-  // Wird ggf. dynamisch via ./app-cfg.json überschrieben
   // Immer über den Proxy gehen, um 403/CORS von public RPC zu vermeiden:
   RPC: "https://inpinity.online/api/token/rpc",
 
@@ -53,9 +56,9 @@ const CFG = {
     dist_buyback_reserve_bps: 800
   },
 
-  // IIFE Builds (CSP-freundlich)
-  WEB3_IIFE: "https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js",
-  QR_IIFE:   "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"
+  // IIFE Builds (CSP-freundlich) – mit Version-Param fürs Cache-Busting
+  WEB3_IIFE: "https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js?v="+APP_VERSION,
+  QR_IIFE:   "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js?v="+APP_VERSION
 };
 
 /* ================ SOLANA / PHANTOM ================ */
@@ -70,6 +73,21 @@ function fmti(n){ if(n==null||isNaN(n))return "–"; return Number(n).toLocaleSt
 function solscan(addr){ return `https://solscan.io/account/${addr}`; }
 function nowSec(){ return Math.floor(Date.now()/1000); }
 function round6(n){ return Math.round(Number(n||0)*1e6)/1e6; }
+
+/* ---------- Guards/Utils ---------- */
+function sanitizeRpc(uStr){
+  try{
+    const u = new URL(uStr);
+    // Erzwinge unseren Proxy
+    if (u.origin !== "https://inpinity.online") return CFG.RPC;
+    if (!/\/api\/token\/rpc$/.test(u.pathname)) return CFG.RPC;
+    return u.toString();
+  }catch{ return CFG.RPC; }
+}
+function withVer(url){
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}v=${encodeURIComponent(APP_VERSION)}&t=${Date.now()}`;
+}
 
 /* ---------- Loader ---------- */
 function getPhantomProvider(){
@@ -113,11 +131,11 @@ function ensureQR(){
 /* ---------- ./app-cfg.json laden (optional) ---------- */
 async function loadPublicAppCfg(){
   try{
-    const r = await fetch("./app-cfg.json", { headers:{accept:"application/json"} });
+    const r = await fetch(withVer("./app-cfg.json"), { headers:{accept:"application/json"} });
     if (!r.ok) return;
     const c = await r.json();
 
-    if (c?.RPC) CFG.RPC = c.RPC;
+    if (c?.RPC) CFG.RPC = sanitizeRpc(c.RPC);
     if (c?.API_BASE) CFG.API_BASE = c.API_BASE;
     if (c?.INPI_MINT) CFG.INPI_MINT = c.INPI_MINT;
     if (c?.USDC_MINT) CFG.USDC_MINT = c.USDC_MINT;
@@ -320,8 +338,10 @@ function updateIntentAvailability(){
 let intentPopup = null;
 function openIntentPopup(){
   if (!intentPopup || intentPopup.closed){
-    // Gleiche Origin/Route! (HTML liegt unter /pages/token/)
-    intentPopup = window.open("/pages/token/intent-popup.html", "inpi_intent", "width=420,height=640,noopener");
+    try{
+      intentPopup = window.open("/pages/token/intent-popup.html", "inpi_intent", "width=420,height=640,noopener");
+      if (!intentPopup) alert("Popup wurde blockiert – bitte Popups für diese Seite erlauben.");
+    }catch{}
   }
   return intentPopup;
 }
@@ -329,7 +349,7 @@ function safePostToPopup(msg){
   try { if (intentPopup && !intentPopup.closed) intentPopup.postMessage(msg, location.origin); } catch {}
 }
 function saveIntentCache(obj){
-  const payload = { ...obj, ts: Date.now() };
+  const payload = { ...obj, ts: Date.now(), ver: APP_VERSION };
   try { localStorage.setItem("inpi:lastIntent", JSON.stringify(payload)); } catch {}
   try { sessionStorage.setItem("inpi:lastIntent", JSON.stringify(payload)); } catch {}
 }
@@ -338,6 +358,7 @@ function loadIntentCache(){
     const a = sessionStorage.getItem("inpi:lastIntent") || localStorage.getItem("inpi:lastIntent");
     if (!a) return null;
     const j = JSON.parse(a);
+    if (j.ver !== APP_VERSION) return null; // bei Versionwechsel nicht hydraten
     // 30min TTL
     if (Date.now() - (j.ts||0) > 30*60*1000) return null;
     return j;
@@ -371,6 +392,7 @@ async function init(){
   await refreshStatus();
 
   if (!STATE.rpc_url) STATE.rpc_url = CFG.RPC;
+  STATE.rpc_url = sanitizeRpc(STATE.rpc_url);
   if (!connection || currentRpcUrl !== STATE.rpc_url){
     connection = new Connection(STATE.rpc_url, "confirmed");
     currentRpcUrl=STATE.rpc_url;
@@ -449,10 +471,10 @@ function setBonusNote(){
 /* ---------- Status laden ---------- */
 async function refreshStatus(){
   try{
-    const r = await fetch(`${CFG.API_BASE}/status?t=${Date.now()}`, { headers:{accept:"application/json"} });
+    const r = await fetch(withVer(`${CFG.API_BASE}/status`), { headers:{accept:"application/json"} });
     const j = await r.json();
 
-    STATE.rpc_url   = j?.rpc_url || CFG.RPC;
+    STATE.rpc_url   = sanitizeRpc(j?.rpc_url || CFG.RPC);
     STATE.inpi_mint = j?.inpi_mint || CFG.INPI_MINT;
     STATE.usdc_mint = j?.usdc_mint || CFG.USDC_MINT;
 
@@ -599,7 +621,7 @@ async function hasNftOnChain(ownerStr, nftMintStr){
 async function refreshBalances(){
   if (!pubkey) return;
   try{
-    const url = `${CFG.API_BASE}/wallet/balances?wallet=${encodeURIComponent(pubkey.toBase58())}&t=${Date.now()}`;
+    const url = withVer(`${CFG.API_BASE}/wallet/balances?wallet=${encodeURIComponent(pubkey.toBase58())}`);
     const r = await fetch(url, { headers:{accept:"application/json"}});
     if (!r.ok) throw new Error(`API ${r.status}`);
     const j = await r.json();
@@ -642,7 +664,7 @@ async function refreshBalances(){
 async function refreshClaimStatus(){
   if (!pubkey) return;
   try{
-    const r = await fetch(`${CFG.API_BASE}/claim/status?wallet=${pubkey.toBase58()}&t=${Date.now()}`, { headers:{accept:"application/json"} });
+    const r = await fetch(withVer(`${CFG.API_BASE}/claim/status?wallet=${pubkey.toBase58()}`), { headers:{accept:"application/json"} });
     const st = await r.json();
     const pending = Number(st?.pending_inpi || 0);
     STATE.claimable_inpi = pending;
@@ -855,7 +877,7 @@ if (btnPresaleIntent){
       if (STATE.input_mode==="USDC") body.amount_usdc = Number(vRaw);
       else body.amount_inpi = Number(vRaw);
 
-      const r = await fetch(`${CFG.API_BASE}/presale/intent?t=${Date.now()}`, {
+      const r = await fetch(withVer(`${CFG.API_BASE}/presale/intent`), {
         method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
         body: JSON.stringify(body)
       });
@@ -925,7 +947,7 @@ async function startEarlyFlow(){
   try{
     if (earlyArea) earlyArea.style.display = "block";
     if (earlyMsg) earlyMsg.textContent="Erzeuge Solana-Pay QR …";
-    const r = await fetch(`${CFG.API_BASE}/claim/early-intent`, {
+    const r = await fetch(withVer(`${CFG.API_BASE}/claim/early-intent`), {
       method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
       body: JSON.stringify({ wallet: pubkey.toBase58() })
     });
@@ -945,7 +967,7 @@ async function confirmEarlyFee(){
   if (!sig) return alert("Bitte die Transaktions-Signatur der Fee-Zahlung eintragen.");
   try{
     if (earlyMsg) earlyMsg.textContent="Prüfe Zahlung & queued Claim …";
-    const r = await fetch(`${CFG.API_BASE}/claim/confirm`, {
+    const r = await fetch(withVer(`${CFG.API_BASE}/claim/confirm`), {
       method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
       body: JSON.stringify({ wallet: pubkey.toBase58(), fee_signature: sig })
     });
@@ -996,5 +1018,8 @@ function bs58Encode(bytes){
 }
 
 /* ---------- Boot ---------- */
-window.addEventListener("DOMContentLoaded", ()=>{ init().catch(console.error); });
+window.addEventListener("DOMContentLoaded", ()=>{
+  console.log("INPI app version:", APP_VERSION);
+  init().catch(console.error);
+});
 </script>

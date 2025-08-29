@@ -1,26 +1,28 @@
 <!doctype html>
 <html lang="de">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Inpinity (INPI) – Presale</title>
-  <meta name="description" content="Inpinity Token (INPI) – Presale mit USDC auf Solana, Early-Claim & NFT-Rabatt."/>
-
-  <!-- Strenge, aber passende CSP (QR wird lokal via Canvas gerendert) -->
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'self';
-    connect-src 'self' https://inpinity.online https://inpi-token.pages.dev https://api.mainnet-beta.solana.com https://mainnet.helius-rpc.com https://rpc.helius.xyz;
-    img-src 'self' data:;
-    script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline';
-    style-src 'self' 'unsafe-inline';
-    object-src 'none';
-    base-uri 'none';
-  ">
-
-  <link rel="preconnect" href="https://inpinity.online"/>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net"/>
-  <link rel="stylesheet" href="./styles.css"/>
-</head>
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>Inpinity (INPI) – Presale</title>
+    <meta name="description" content="Inpinity Token (INPI) – Presale mit USDC auf Solana, Early-Claim & NFT-Rabatt."/>
+    
+    <!-- Schlanke, Proxy-freundliche CSP -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      connect-src 'self' https://inpinity.online;
+      img-src 'self' data: blob:;
+      script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline';
+      style-src 'self' 'unsafe-inline';
+      object-src 'none';
+      base-uri 'none';
+    ">
+  
+    <!-- Build-Tag zum Cache-Busting -->
+    <script>window.INPI_BUILD = "v-2025-08-29-1";</script>
+  
+    <link rel="preconnect" href="https://cdn.jsdelivr.net"/>
+    <link rel="stylesheet" href="./styles.css?v=v-2025-08-29-1"/>
+  </head>
 <body>
   <header class="bar">
     <img src="./inpi.png" class="logo" alt="INPI Logo"/>
@@ -132,6 +134,8 @@
 
   <!-- web3.js IIFE (kein type="module"); app.js kümmert sich um Fallback-Laden -->
   <script defer src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js"></script>
-  <script defer src="./app.js"></script>
+    <!-- Keine feste web3-Einbindung: app.js lädt IIFE selbst mit Version -->
+  <!-- Keine feste web3-Einbindung: app.js lädt IIFE selbst mit Version -->
+  <script defer src="./app.js?v=v-2025-08-29-1"></script>
 </body>
 </html>
