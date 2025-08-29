@@ -2,7 +2,7 @@
     "name": "Inpinity Token",
     "symbol": "INPI",
     
-    "RPC": "https://api.mainnet-beta.solana.com",
+
     "API_BASE": "https://inpinity.online/api/token",
   
     "INPI_MINT": "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1",
