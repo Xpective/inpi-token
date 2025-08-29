@@ -197,6 +197,9 @@ export default {
       const presale = parseFloat(env.PRESALE_PRICE_USDC || "0");
       const discount_bps = parseInt(env.DISCOUNT_BPS || "1000", 10);
       const tgeTs = env.TGE_TS ? parseInt(env.TGE_TS, 10) : null;
+      const airdrop_bps = env.AIRDROP_BONUS_BPS != null
+        ? parseInt(env.AIRDROP_BONUS_BPS, 10)
+        : 600;
 
       // WICHTIG: Proxy-RPC (CSP-freundlich)
       const rpcProxy = `${url.origin}/api/token/rpc`;
@@ -219,7 +222,7 @@ export default {
           flat_usdc: parseFloat(env.EARLY_FLAT_USDC || "1"),
           fee_dest_wallet: env.CREATOR || null
         },
-        airdrop_bonus_bps: env.AIRDROP_BONUS_BPS ? parseInt(env.AIRDROP_BPS as any, 10) : (env.AIRDROP_BONUS_BPS ? parseInt(env.AIRDROP_BONUS_BPS,10) : 600),
+        airdrop_bonus_bps: Number.isFinite(airdrop_bps) ? airdrop_bps : 600,
         // Tokenomics-Fallbacks
         supply_total: 3141592653,
         dist_presale_bps: 1000,
