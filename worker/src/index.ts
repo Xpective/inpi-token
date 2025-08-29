@@ -166,13 +166,6 @@ function solanaPayURL(
   return u.toString();
 }
 
-/** Deep-Links für Wallets (Universal links) */
-function walletLinks(solanaPay: string) {
-  return {
-    phantom_universal_url: `https://phantom.app/ul/v1/solana-pay?link=${encodeURIComponent(solanaPay)}`,
-    solflare_universal_url: `https://solflare.com/ul/v1/solana-pay?link=${encodeURIComponent(solanaPay)}`
-  };
-}
 
 /** Rundet auf 6 Dezimalstellen (USDC) */
 function roundUsdc(n: number): number {
