@@ -3,7 +3,7 @@ export interface Env {
   SOLANA_RPC: string;               // z.B. https://rpc.helius.xyz/?api-key=...
   USDC_MINT: string;
   INPI_MINT: string;
-  CREATOR: string;                  // Owner/Empfänger der USDC
+  CREATOR: string;                  // Owner/Empfänger der USDC (Ziel-Pubkey, kein ATA)
   PRESALE_STATE?: string;           // "open" | "pre" | "closed"
   PRESALE_PRICE_USDC?: string;      // Basispreis pro INPI in USDC
   PUBLIC_PRICE_USDC?: string;
@@ -14,23 +14,37 @@ export interface Env {
   EARLY_FLAT_USDC?: string;         // z.B. "1.0"
   GATE_NFT_MINT?: string;
   AIRDROP_BONUS_BPS?: string;
+  TGE_TS?: string;                  // Unix Sekunden als string
+  USDC_VAULT_ATA?: string;          // öffentliche USDC-ATA (nur Info/Anzeige)
   ALLOWED_ORIGINS?: string;         // CSV, z.B. https://inpinity.online,https://inpi-token.pages.dev
   KV_PRESALE: KVNamespace;
   KV_CLAIMS: KVNamespace;
 }
 
+/* -------- constants -------- */
+const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const TOKEN_2022_PROG = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+
 /* -------- helpers -------- */
 const json = (obj: any, status = 200, extra: Record<string,string> = {}) =>
-  new Response(JSON.stringify(obj), { status, headers: { "content-type":"application/json; charset=utf-8", "cache-control":"no-store", ...extra } });
+  new Response(JSON.stringify(obj), {
+    status,
+    headers: {
+      "content-type":"application/json; charset=utf-8",
+      "cache-control":"no-store",
+      ...extra
+    }
+  });
 
 const makeCORS = (env: Env) => {
-  const allowList = (env.ALLOWED_ORIGINS || "*").split(",").map(s=>s.trim()).filter(Boolean);
+  const list = (env.ALLOWED_ORIGINS || "*")
+    .split(",").map(s=>s.trim()).filter(Boolean);
+  const allowAll = list.includes("*");
   return (origin?: string|null) => {
-    const allow = origin && allowList.includes(origin) ? origin : (allowList[0] || "*");
+    const allow = allowAll ? "*" : (origin && list.includes(origin) ? origin : (list[0] || "*"));
     return {
       "access-control-allow-origin": allow,
       "access-control-allow-methods": "GET,POST,OPTIONS",
-      // Spiegel die angefragten Header, damit Preflights nie hängen bleiben
       "access-control-allow-headers": "*",
       "access-control-max-age": "86400",
       "vary": "origin"
@@ -38,8 +52,18 @@ const makeCORS = (env: Env) => {
   };
 };
 
-const randomRef = () => [...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,"0")).join("");
-const solanaPay = (recipient: string, amount: number, usdcMint: string, memo: string, label="INPI Presale", message="INPI Presale Deposit") => {
+const randomRef = () =>
+  [...crypto.getRandomValues(new Uint8Array(16))]
+    .map(b=>b.toString(16).padStart(2,"0")).join("");
+
+const solanaPay = (
+  recipient: string,
+  amount: number,
+  usdcMint: string,
+  memo: string,
+  label="INPI Presale",
+  message="INPI Presale Deposit"
+) => {
   const u = new URL(`solana:${recipient}`);
   u.searchParams.set("amount", String(amount));
   u.searchParams.set("spl-token", usdcMint);
@@ -56,16 +80,49 @@ async function rpc(env: Env, method: string, params: any[]) {
     body: JSON.stringify({ jsonrpc:"2.0", id:1, method, params })
   });
   const t = await r.text();
-  const j = JSON.parse(t);
+  let j: any = {};
+  try { j = JSON.parse(t); } catch { throw new Error("RPC parse error"); }
   if (j?.error) throw new Error(`${j.error.code}: ${j.error.message}`);
   return j.result;
 }
+
+/**
+ * Streng nach Mint: klappt bei klassischem SPL.
+ * Fallback: Token-2022 → per programId und manuell nach mint filtern.
+ */
 async function getTokenUiAmount(env: Env, owner: string, mint: string) {
-  const res = await rpc(env, "getParsedTokenAccountsByOwner", [owner, { mint }]);
   let total = 0;
-  for (const v of (res?.value||[])) total += Number(v?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0);
+
+  // 1) Direkte Mint-Filterung
+  try {
+    const res1 = await rpc(env, "getParsedTokenAccountsByOwner", [
+      owner,
+      { mint },
+      { commitment: "confirmed" }
+    ]);
+    for (const v of (res1?.value||[])) {
+      total += Number(v?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0);
+    }
+    if (total > 0) return total;
+  } catch {/* ignore and try 2022 fallback */}
+
+  // 2) Token-2022 Fallback via programId
+  try {
+    const res2 = await rpc(env, "getParsedTokenAccountsByOwner", [
+      owner,
+      { programId: TOKEN_2022_PROG },
+      { commitment: "confirmed" }
+    ]);
+    for (const v of (res2?.value||[])) {
+      const info = v?.account?.data?.parsed?.info;
+      if (info?.mint === mint) {
+        total += Number(info?.tokenAmount?.uiAmount ?? 0);
+      }
+    }
+  } catch {/* ignore */}
   return total;
 }
+
 async function hasNft(env: Env, owner: string, gateMint?: string) {
   if (!gateMint) return false;
   return (await getTokenUiAmount(env, owner, gateMint).catch(()=>0)) > 0;
@@ -83,7 +140,8 @@ async function proxyPages(env: Env, req: Request, url: URL) {
   const upstreamUrl = new URL(subpath + url.search, upstreamBase);
 
   const reqHeaders = new Headers(req.headers);
-  reqHeaders.delete("host"); // nicht weiterreichen
+  reqHeaders.delete("host");
+
   const r = await fetch(upstreamUrl.toString(), {
     method: req.method,
     headers: reqHeaders,
@@ -91,13 +149,11 @@ async function proxyPages(env: Env, req: Request, url: URL) {
   });
 
   const h = new Headers(r.headers);
-  // leichte Caches für statische Assets
   if (r.ok && /\.(js|css|png|jpg|svg|json|webp|woff2?)$/i.test(subpath)) {
     h.set("cache-control","public, max-age=600");
   } else {
     h.set("cache-control","no-store");
   }
-  // Sicherheitsheader
   h.set("x-content-type-options","nosniff");
   h.set("referrer-policy","no-referrer");
   return new Response(r.body, { status: r.status, headers: h });
@@ -120,26 +176,31 @@ export default {
     if (url.pathname.endsWith("/api/token/status") && req.method === "GET") {
       const presale = parseFloat(env.PRESALE_PRICE_USDC || "0");
       const discount_bps = parseInt(env.DISCOUNT_BPS || "1000", 10);
+      const tgeTs = env.TGE_TS ? parseInt(env.TGE_TS, 10) : null;
+
+      // Wichtig: gib die Proxy-RPC-URL aus, nicht die Upstream-URL
+      const rpcProxy = `${url.origin}/api/token/rpc`;
+
       return json({
-        rpc_url: env.SOLANA_RPC,
+        rpc_url: rpcProxy,
         inpi_mint: env.INPI_MINT,
         usdc_mint: env.USDC_MINT,
         presale_state: env.PRESALE_STATE || "pre",
-        tge_ts: parseInt(env.TGE_TS as any, 10) || null,
+        tge_ts: Number.isFinite(tgeTs as any) ? tgeTs : null,
         deposit_usdc_ata: env.USDC_VAULT_ATA || null,
         deposit_usdc_owner: env.CREATOR || null,
         presale_min_usdc: env.PRESALE_MIN_USDC ? parseFloat(env.PRESALE_MIN_USDC) : null,
         presale_max_usdc: env.PRESALE_MAX_USDC ? parseFloat(env.PRESALE_MAX_USDC) : null,
         presale_price_usdc: Number.isFinite(presale) ? presale : null,
         public_price_usdc: env.PUBLIC_PRICE_USDC ? parseFloat(env.PUBLIC_PRICE_USDC) : null,
-        discount_bps,
+        discount_bps: Number.isFinite(discount_bps) ? discount_bps : 0,
         early_claim: {
           enabled: env.EARLY_CLAIM_ENABLED === "true",
           flat_usdc: parseFloat(env.EARLY_FLAT_USDC || "1"),
           fee_dest_wallet: env.CREATOR || null
         },
         airdrop_bonus_bps: env.AIRDROP_BONUS_BPS ? parseInt(env.AIRDROP_BONUS_BPS, 10) : 600,
-        // einfache Tokenomics-Fallbacks (Frontend kann sie überschreiben)
+        // Tokenomics-Fallbacks
         supply_total: 3141592653,
         dist_presale_bps: 1000,
         dist_dex_liquidity_bps: 2000,
@@ -162,7 +223,10 @@ export default {
           getTokenUiAmount(env, wallet, env.INPI_MINT),
           hasNft(env, wallet, env.GATE_NFT_MINT)
         ]);
-        return json({ usdc:{ uiAmount: usdc }, inpi:{ uiAmount: inpi }, gate_ok: !!gate }, 200, cors);
+        return json(
+          { usdc:{ uiAmount: usdc }, inpi:{ uiAmount: inpi }, gate_ok: !!gate },
+          200, cors
+        );
       } catch (e:any) {
         return json({ error: String(e?.message||e) }, 500, cors);
       }
@@ -176,12 +240,13 @@ export default {
       return json({ pending_inpi: raw ? parseFloat(raw) : 0 }, 200, cors);
     }
 
-    /* --- API: /api/token/presale/intent  (USDC ODER INPI, Rabatt via NFT) --- */
+    /* --- API: /api/token/presale/intent  (USDC ODER INPI) --- */
     if (url.pathname.endsWith("/api/token/presale/intent") && req.method === "POST") {
       const body = await req.json().catch(()=>({}));
       const wallet = String(body.wallet || "");
       const amount_usdc_raw = body.amount_usdc;
       const amount_inpi_raw = body.amount_inpi;
+
       if (!wallet || (!amount_usdc_raw && !amount_inpi_raw)) {
         return json({ error: "wallet & (amount_usdc | amount_inpi) required" }, 400, cors);
       }
@@ -219,7 +284,7 @@ export default {
         { expirationTtl: 60*60*24*7 }
       );
 
-      // Optional gleich Early-QR mitliefern
+      // Optional: Early-QR mitliefern
       let qr_early_fee: any = undefined;
       if (env.EARLY_CLAIM_ENABLED === "true") {
         const fee = parseFloat(env.EARLY_FLAT_USDC || "1");
@@ -244,7 +309,11 @@ export default {
       const amount = parseFloat(env.EARLY_FLAT_USDC || "1.0");
       const memo = `INPI-early-claim-${ref}`;
       const payUrl = solanaPay(env.CREATOR, amount, env.USDC_MINT, memo, "INPI Early Claim", "INPI Early Claim Fee");
-      await env.KV_CLAIMS.put(`early:${wallet}`, JSON.stringify({ wallet, ref, memo, amount, status:"pending", created_at: Date.now() }), { expirationTtl: 60*60*24*30 });
+      await env.KV_CLAIMS.put(
+        `early:${wallet}`,
+        JSON.stringify({ wallet, ref, memo, amount, status:"pending", created_at: Date.now() }),
+        { expirationTtl: 60*60*24*30 }
+      );
       return json({ ok:true, ref, solana_pay_url: payUrl }, 200, cors);
     }
 
@@ -253,15 +322,26 @@ export default {
       const { wallet, fee_signature } = await req.json().catch(()=>({}));
       if (!wallet || !fee_signature) return json({ error: "wallet & fee_signature required" }, 400, cors);
       const job_id = randomRef();
-      await env.KV_CLAIMS.put(`job:${job_id}`, JSON.stringify({ wallet, fee_signature, queued_at: Date.now(), status:"queued" }), { expirationTtl: 60*60*24*3 });
+      await env.KV_CLAIMS.put(
+        `job:${job_id}`,
+        JSON.stringify({ wallet, fee_signature, queued_at: Date.now(), status:"queued" }),
+        { expirationTtl: 60*60*24*3 }
+      );
       return json({ ok:true, job_id }, 200, cors);
     }
 
     /* --- API Passthrough: /api/token/rpc --- */
     if (url.pathname.endsWith("/api/token/rpc") && req.method === "POST") {
       const body = await req.text();
-      const r = await fetch(env.SOLANA_RPC, { method:"POST", headers:{ "content-type":"application/json" }, body });
-      return new Response(await r.text(), { status: r.status, headers: { "content-type":"application/json", ...cors }});
+      const r = await fetch(env.SOLANA_RPC, {
+        method:"POST",
+        headers:{ "content-type":"application/json" },
+        body
+      });
+      return new Response(await r.text(), {
+        status: r.status,
+        headers: { "content-type":"application/json", ...cors }
+      });
     }
 
     return json({ error: "not found" }, 404, cors);
