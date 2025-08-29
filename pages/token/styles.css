@@ -1,13 +1,25 @@
-:root{color-scheme:dark light}
-body{margin:0;background:#0d1622;color:#e8f0ff;font:16px/1.45 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-main{max-width:920px;margin:24px auto;padding:0 16px}
-.row{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
-.card{background:#0f1b2a;border:1px solid #1c2836;border-radius:12px;padding:16px;margin:12px 0}
-button{background:#1b2a40;color:#e8f0ff;border:1px solid #2a3d57;border-radius:10px;padding:.55rem .9rem;cursor:pointer}
-button.secondary{background:transparent}
-input{background:#0b1420;color:#e8f0ff;border:1px solid #1a2231;border-radius:8px;padding:.5rem .6rem;width:100%}
-label{display:block;margin:.3rem 0}
-.qr{display:block;width:240px;height:240px;border-radius:8px;background:#061120;border:1px dashed #223148}
-.muted{color:#9db3c7}
-.badge{border:1px solid #2a3d57;border-radius:999px;padding:2px 8px;font-size:12px;color:#9db3c7}
-pre{white-space:pre-wrap;max-height:220px;overflow:auto;background:#09141f;border:1px solid #1c2836;border-radius:8px;padding:8px;font-size:12px}
+:root{
+    color-scheme:dark;
+    --bg:#0b0f14; --elev:#101826; --ink:#eaf2ff; --muted:#9db3c7; --line:#1e2b3d;
+    --cyan:#06b6d4; --purple:#8b5cf6; --accent:linear-gradient(135deg,var(--purple),var(--cyan));
+    --phi:1.618; --rad:13px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  main{max-width:960px;margin:24px auto;padding:0 16px}
+  .card{background:var(--elev);border:1px solid var(--line);border-radius:var(--rad);padding:calc(10px*var(--phi))}
+  h1,h2{margin:.2rem 0 .6rem}
+  .muted{color:var(--muted)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  input,button{font:inherit;border-radius:12px;border:1px solid var(--line);padding:10px 12px;background:#0a1220;color:var(--ink)}
+  button{background:var(--accent);border:0;color:#051018;font-weight:700;cursor:pointer}
+  button.secondary{background:transparent;border:1px solid var(--line);color:var(--ink)}
+  .qr{border:1px dashed var(--line);border-radius:8px;background:#061120;width:240px;height:240px}
+  #gateBadge{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-left:6px;color:var(--muted)}
+  a{color:#7cc4ff;text-decoration:none}
+  a:hover{text-decoration:underline}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:.45rem;border-bottom:1px solid var(--line)}
+  th{text-align:left;color:var(--muted)}
+  td:last-child,th:last-child{text-align:right}
