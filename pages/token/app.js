@@ -26,9 +26,9 @@
     const fallback = location.origin + "/api/token/rpc";
     if (!u) return fallback;
     const s = String(u);
-    if (s.includes("api.mainnet-beta.solana.com")) return fallback;   // CSP: niemals direkt
+    if (s.includes("api.mainnet-beta.solana.com")) return fallback; // nie direkt
     const abs = toAbsolute(s);
-    if (!sameOrigin(abs)) return fallback;                            // Fremd-Origin -> Proxy
+    if (!sameOrigin(abs)) return fallback; // Fremd-Origin -> Proxy
     return abs;
   }
 
@@ -46,14 +46,14 @@
   let conn=null, provider=null, pubkey=null;
 
   async function loadCfg(){
-    const r = await fetch("./app-cfg.json?v="+(window.__INPI_VER__||Date.now()));
+    const r = await fetch("./app-cfg.json?v="+Date.now());
     const c = await r.json();
     CFG.API  = c.API_BASE;       // z.B. "/api/token"
     CFG.INPI = c.INPI_MINT;
     CFG.USDC = c.USDC_MINT;
     CFG.GATE = c.GATE_NFT_MINT || c.GATE_MINT || "";
 
-    // marketplace / explorer links (optional im DOM)
+    // Explorer/Market Links (optional im DOM)
     const lnTensor = el("lnTensor"); if (lnTensor) lnTensor.href = "https://www.tensor.trade/item/"+encodeURIComponent(CFG.GATE);
     const lnME     = el("lnME");     if (lnME)     lnME.href     = "https://magiceden.io/item-details/"+encodeURIComponent(CFG.GATE);
     const lnInpiSS = el("lnInpiSS"); if (lnInpiSS) lnInpiSS.href = "https://solscan.io/token/"+encodeURIComponent(CFG.INPI);
@@ -73,7 +73,7 @@
     STATE.min = j.presale_min_usdc ?? null;
     STATE.max = j.presale_max_usdc ?? null;
 
-    // Preise (mit/ohne NFT) – Worker liefert base + discount_bps ODER direkt Felder
+    // Preise (mit/ohne NFT)
     const priceWith = j.price_with_nft_usdc;
     const priceWo   = j.price_without_nft_usdc;
     if (Number.isFinite(priceWith) || Number.isFinite(priceWo)) {
@@ -170,18 +170,15 @@
   // QR (Canvas-Lib oder Fallback <img>)
   async function drawQR(canvasOrImg, text){
     if (!canvasOrImg || !text) return;
-    // Canvas bevorzugt
     if (window.QRCode?.toCanvas && canvasOrImg.tagName === "CANVAS"){
       await window.QRCode.toCanvas(canvasOrImg, text, { width: 240, margin:1 });
       return;
     }
-    // Bild-Fallback
     if (canvasOrImg.tagName === "IMG"){
       canvasOrImg.src = "https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=" + encodeURIComponent(text);
       canvasOrImg.alt = "QR";
       return;
     }
-    // Notfall: Text-Link
     canvasOrImg.textContent = text;
   }
 
@@ -193,7 +190,6 @@
       const mint  = new window.solanaWeb3.PublicKey(mintStr);
       let total = 0;
 
-      // klassisches SPL via mint
       const res1 = await conn.getParsedTokenAccountsByOwner(owner, { mint }, { commitment: "confirmed" });
       for (const v of (res1?.value||[])){
         const amt = v?.account?.data?.parsed?.info?.tokenAmount?.uiAmount;
@@ -201,7 +197,6 @@
       }
       if (total > 0) return total;
 
-      // Token-2022 via programId + Filter auf mint
       const prog2022 = new window.solanaWeb3.PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
       const res2 = await conn.getParsedTokenAccountsByOwner(owner, { programId: prog2022 }, { commitment: "confirmed" });
       for (const v of (res2?.value||[])){
@@ -221,8 +216,8 @@
 
   // ======= Preiswahl (mit/ohne NFT) =======
   function currentPrice(){
-    const w  = STATE.pWith; // Preis mit NFT
-    const wo = STATE.pWo;   // Preis ohne NFT
+    const w  = STATE.pWith;
+    const wo = STATE.pWo;
     return STATE.gate
       ? (Number.isFinite(w)  ? w  : wo)
       : (Number.isFinite(wo) ? wo : w);
@@ -258,15 +253,14 @@
       if (usdcNode) usdcNode.textContent = fmt(usdcOC, 2);
       if (inpiNode) inpiNode.textContent = fmt(inpiOC, 0);
 
-      // NFT-Gate check on-chain
       const gate = await hasNftOnChain(pubkey.toBase58(), CFG.GATE).catch(()=>false);
       STATE.gate = !!gate;
 
       renderPrice();
       updateExpected();
-      return; // fertig
+      return;
     } catch(e){
-      // weiter zum API-Fallback
+      // API-Fallback
     }
 
     // 2) Fallback: API
@@ -288,7 +282,7 @@
     }
   }
 
-  // ======= Intent Flow (ohne Popup) =======
+  // ======= Intent Flow =======
   async function onIntent(){
     if (!pubkey) return alert("Bitte Wallet verbinden.");
     if (STATE.presale==="closed") return alert("Presale ist geschlossen.");
@@ -306,7 +300,7 @@
     if (msg) msg.textContent = "Erzeuge QR …";
     if (payRow) payRow.style.display = "block";
 
-    // 1) Optimistic QR (lokal)
+    // 1) Optimistischer QR (lokal)
     try{
       const recipient = STATE.deposit_owner || null;
       const price = currentPrice();
@@ -324,7 +318,7 @@
       }
     }catch{}
 
-    // 2) Server-Intent (liefert finale Solana-Pay-URL + Deeplinks)
+    // 2) Server-Intent (finale URL)
     try{
       const body = { wallet: pubkey.toBase58() };
       if (mode==="USDC") body.amount_usdc = Number(v);
@@ -337,14 +331,12 @@
       const j = await r.json();
       if (!r.ok || !j?.ok) throw new Error(j?.error || `HTTP ${r.status}`);
 
-      // finaler QR
       const link = j.qr_contribute?.solana_pay_url || null;
       const qrEl = el("qr");
       if (link && qrEl) await drawQR(qrEl, link);
       const used = j.qr_contribute?.amount_usdc ?? body.amount_usdc ?? null;
       if (msg) msg.textContent = used!=null ? `✅ Intent registriert. Bitte ${used} USDC senden.` : "✅ Intent registriert.";
 
-      // optional Early-Fee QR inline
       if (j.qr_early_fee?.solana_pay_url){
         const earlyBox = el("early"); if (earlyBox) earlyBox.style.display = "block";
         const earRow = el("earRow");  if (earRow) earRow.style.display = "block";
@@ -357,7 +349,7 @@
     }
   }
 
-  // ======= Early flow (separat) =======
+  // ======= Early flow =======
   async function startEarly(){
     if (!pubkey) return alert("Bitte Wallet verbinden.");
     if (!STATE.early.enabled) return alert("Early-Claim ist deaktiviert.");
@@ -415,7 +407,6 @@
         }catch(e){ alert("Wallet-Verbindung abgebrochen."); }
       };
     }
-    // silent connect
     try{
       const res = await provider.connect({ onlyIfTrusted:true }).catch(()=>null);
       if (res?.publicKey){
@@ -436,12 +427,11 @@
     await loadCfg();
     await status();
     if (window.solanaWeb3?.Connection && STATE.rpc){
-      const rpcUrl = toAbsolute(STATE.rpc);   // ABSOLUT & CSP-sicher
+      const rpcUrl = toAbsolute(STATE.rpc); // absolut & same-origin
       conn = new window.solanaWeb3.Connection(rpcUrl, "confirmed");
     }
     await connectIfPossible();
 
-    // min/max Hinweise für USDC-Eingabe
     const amt = el("amt");
     if (amt){
       if (STATE.min!=null) amt.min = String(STATE.min);

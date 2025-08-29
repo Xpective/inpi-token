@@ -5,26 +5,18 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>INPI Presale</title>
 
-  
-  <!-- CSP: nur self + jsDelivr für IIFE-Libs -->
+  <!-- Minimal harte CSP. Für frame-ancestors/strict-transport-security -> im Pages _headers setzen -->
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
     connect-src 'self' https://inpinity.online;
-    img-src 'self' data:;
+    img-src 'self' data: https://api.qrserver.com;
     style-src 'self' 'unsafe-inline';
     script-src 'self' https://cdn.jsdelivr.net;
-    frame-ancestors 'none';
     base-uri 'self';
     form-action 'self';
-    img-src 'self' data: https://api.qrserver.com;
   ">
 
   <link rel="stylesheet" href="./styles.css?v=1"/>
-  <script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js" defer></script>
-  <script>
-    // kleiner Cache-Buster
-    window.__INPI_VER__ = "v" + Date.now();
-  </script>
 </head>
 <body>
   <main>
@@ -76,9 +68,9 @@
 
     <section id="early" class="card" style="display:none">
       <h2>Early-Claim</h2>
-      <p class="muted">Sofortige Gutschrift gegen 1 USDC Fee.</p>
+      <p class="muted">Sofortige Gutschrift gegen Fee.</p>
       <div class="row">
-        <button id="btnEarly">QR für 1 USDC</button>
+        <button id="btnEarly">QR für Fee</button>
         <small id="emsg" class="muted"></small>
       </div>
       <div id="earRow" class="row" style="display:none;margin-top:10px">
@@ -118,9 +110,9 @@
     </section>
   </main>
 
-  <!-- IIFE libs -->
-  <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <!-- IIFE libs über jsDelivr, keine inline scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" defer></script>
   <script src="./app.js?v=1" defer></script>
 </body>
 </html>
