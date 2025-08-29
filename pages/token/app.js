@@ -1,4 +1,3 @@
-<script>
 /* ===========================================
    Inpinity Token – Frontend (Nur-QR, keine Links, mit Optimistic-QR)
    Pfad: /pages/token/app.js
@@ -7,7 +6,8 @@
 /* ==================== KONFIG ==================== */
 const CFG = {
   // Wird ggf. dynamisch via ./app-cfg.json überschrieben
-  RPC: "https://api.mainnet-beta.solana.com",
+  // Immer über den Proxy gehen, um 403/CORS von public RPC zu vermeiden:
+  RPC: "https://inpinity.online/api/token/rpc",
 
   INPI_MINT: "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1",
   USDC_MINT: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -247,7 +247,6 @@ const btnCopyDeposit = $("#btnCopyDeposit");
 
 // Presale QR (Hauptzahlung)
 const payArea = $("#payArea");
-// WICHTIG: wir fragen das Element beim Zeichnen frisch ab (wegen IMG→CANVAS Swap)
 
 // Early Claim
 const earlyBox = $("#earlyBox");
@@ -256,7 +255,6 @@ const earlyArea = $("#earlyArea");
 const earlyMsg = $("#earlyMsg");
 const earlySig = $("#earlySig");
 const btnEarlyConfirm = $("#btnEarlyConfirm");
-// auch hier: Element frisch abfragen
 
 /* ---------- Badge bei Preis ---------- */
 let gateBadge = document.createElement("span");
@@ -641,7 +639,9 @@ function injectInputModeSwitcher(){
   if (!inpAmount) return;
   const parentLabel = inpAmount.closest("label");
   if (parentLabel){
-    parentLabel.firstChild && (parentLabel.firstChild.nodeType===3) && (parentLabel.firstChild.textContent = "Betrag");
+    if (parentLabel.firstChild && parentLabel.firstChild.nodeType===3) {
+      parentLabel.firstChild.textContent = "Betrag";
+    }
     const wrap = document.createElement("div");
     wrap.className = "row";
     wrap.style.gap = ".5rem";
@@ -668,7 +668,7 @@ function injectInputModeSwitcher(){
         modeHint.textContent = "Du gibst die gewünschte INPI-Menge an. Der Server berechnet die USDC-Summe.";
         inpAmount.removeAttribute("min"); inpAmount.removeAttribute("max");
       }
-      expectedInpi && (expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0")));
+      if (expectedInpi) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
     };
     modeSel.onchange = ()=>{
       STATE.input_mode = modeSel.value;
@@ -767,10 +767,10 @@ if (btnPresaleIntent){
         const usdcAmount = STATE.input_mode==="USDC" ? round6(vRaw) : round6((price||0)*vRaw);
         const memoLocal = `INPI-presale-pre-${randomRefHex(8)}`;
         localPayURL = buildSolPayURL(recipient, usdcAmount, STATE.usdc_mint || CFG.USDC_MINT, memoLocal);
-        payArea && (payArea.style.display="block");
+        if (payArea) payArea.style.display="block";
         const qre = el("inpi-qr");
         if (qre && localPayURL){ await drawQR(qre, localPayURL, 240); }
-        intentMsg && (intentMsg.textContent = "QR bereit – Betrag wird serverseitig bestätigt …");
+        if (intentMsg) intentMsg.textContent = "QR bereit – Betrag wird serverseitig bestätigt …";
       }
     } catch {}
 
@@ -833,7 +833,7 @@ if (btnPresaleIntent){
     }catch(e){
       console.error(e);
       if (!localPayURL) alert(`Intent fehlgeschlagen:\n${e?.message||e}`);
-      intentMsg && (intentMsg.textContent = "Intent fehlgeschlagen.");
+      if (intentMsg) intentMsg.textContent = "Intent fehlgeschlagen.";
     }finally{ inFlight=false; }
   });
 }
@@ -843,7 +843,7 @@ async function startEarlyFlow(){
   if (!pubkey) return alert("Bitte zuerst Wallet verbinden.");
   if (!STATE.early.enabled) return alert("Early-Claim ist derzeit deaktiviert.");
   try{
-    earlyArea && (earlyArea.style.display = "block");
+    if (earlyArea) earlyArea.style.display = "block";
     if (earlyMsg) earlyMsg.textContent="Erzeuge Solana-Pay QR …";
     const r = await fetch(`${CFG.API_BASE}/claim/early-intent`, {
       method:"POST", headers:{ "content-type":"application/json", accept:"application/json" },
@@ -893,7 +893,7 @@ async function renderEarlyFeeInline(fee){
         </div>
       </div>
     `;
-    payArea && payArea.appendChild(feeBox);
+    if (payArea) payArea.appendChild(feeBox);
   }
   const img = document.getElementById("fee-qr");
   if (img && fee?.solana_pay_url){ await drawQR(img, fee.solana_pay_url, 240); }
@@ -917,4 +917,3 @@ function bs58Encode(bytes){
 
 /* ---------- Boot ---------- */
 window.addEventListener("DOMContentLoaded", ()=>{ init().catch(console.error); });
-</script>
