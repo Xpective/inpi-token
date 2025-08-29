@@ -22,6 +22,7 @@ export interface Env {
 }
 
 const TOKEN_2022_PROG = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+const QR_SVC = "https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=";
 
 const json = (obj: any, status = 200, extra: Record<string,string> = {}) =>
   new Response(JSON.stringify(obj), {
@@ -44,7 +45,14 @@ const makeCORS = (env: Env) => {
 const randomRef = () =>
   [...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,"0")).join("");
 
-const solanaPay = (recipient: string, amount: number, usdcMint: string, memo: string, label="INPI Presale", message="INPI Presale Deposit") => {
+const solanaPay = (
+  recipient: string,
+  amount: number,
+  usdcMint: string,
+  memo: string,
+  label="INPI Presale",
+  message="INPI Presale Deposit"
+) => {
   const u = new URL(`solana:${recipient}`);
   u.searchParams.set("amount", String(amount));
   u.searchParams.set("spl-token", usdcMint);
@@ -53,6 +61,15 @@ const solanaPay = (recipient: string, amount: number, usdcMint: string, memo: st
   u.searchParams.set("memo", memo);
   return u.toString();
 };
+
+function withWalletDeepLinks(link: string) {
+  return {
+    solana_pay_url: link,
+    phantom_universal_url: `https://phantom.app/ul/v1/solana-pay?link=${encodeURIComponent(link)}`,
+    solflare_universal_url: `https://solflare.com/ul/v1/solana-pay?link=${encodeURIComponent(link)}`,
+    qr_url: `${QR_SVC}${encodeURIComponent(link)}`
+  };
+}
 
 const splitRpc = (env: Env) => String(env.SOLANA_RPC||"").split(",").map(s=>s.trim()).filter(Boolean);
 
@@ -64,8 +81,11 @@ async function rpc(env: Env, method: string, params: any[]) {
   let lastErr: any = null;
   for (const ep of endpoints) {
     try {
-      const r = await fetch(ep, { method:"POST", headers:{ "content-type":"application/json" },
-        body: JSON.stringify({ jsonrpc:"2.0", id:1, method, params }) });
+      const r = await fetch(ep, {
+        method:"POST",
+        headers:{ "content-type":"application/json" },
+        body: JSON.stringify({ jsonrpc:"2.0", id:1, method, params })
+      });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = await r.json();
       if (j?.error) throw new Error(`${j.error.code}: ${j.error.message}`);
@@ -91,6 +111,7 @@ async function getTokenUiAmount(env: Env, owner: string, mint: string) {
   } catch {}
   return total;
 }
+
 const hasNft = (env: Env, owner: string, gateMint?: string) =>
   !gateMint ? Promise.resolve(false) : getTokenUiAmount(env, owner, gateMint).then(x=>x>0).catch(()=>false);
 
@@ -118,6 +139,11 @@ export default {
     const url = new URL(req.url);
     const cors = makeCORS(env)(req.headers.get("origin"));
     if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+
+    // Health
+    if (url.pathname.endsWith("/api/token/ping") && req.method === "GET") {
+      return json({ ok:true, ts: Date.now() }, 200, cors);
+    }
 
     // Static under /token/*
     if (url.pathname === "/token" || url.pathname.startsWith("/token/")) {
@@ -217,16 +243,19 @@ export default {
         ref, wallet, amount_usdc:usdc, gated, memo, created_at:Date.now(), status:"pending"
       }), { expirationTtl: 60*60*24*7 });
 
+      // Deep-Links + optional QR-Bild (Fallback)
+      const qr_contribute = { amount_usdc: usdc, ...withWalletDeepLinks(payUrl) };
+
       // Early-QR gleich mitgeben (1 USDC Flat, optional)
       let qr_early_fee: any = undefined;
       if (env.EARLY_CLAIM_ENABLED==="true") {
         const fee = parseFloat(env.EARLY_FLAT_USDC || "1");
         const memo2 = `INPI-early-claim-${randomRef()}`;
         const pay2 = solanaPay(env.CREATOR, fee, env.USDC_MINT, memo2, "INPI Early Claim", "INPI Early Claim Fee");
-        qr_early_fee = { solana_pay_url: pay2, amount_usdc: fee };
+        qr_early_fee = { amount_usdc: fee, ...withWalletDeepLinks(pay2) };
       }
 
-      return json({ ok:true, ref, qr_contribute:{ solana_pay_url: payUrl, amount_usdc: usdc }, qr_early_fee }, 200, cors);
+      return json({ ok:true, ref, qr_contribute, qr_early_fee }, 200, cors);
     }
 
     // POST /api/token/claim/early-intent
@@ -237,8 +266,13 @@ export default {
       const amount = parseFloat(env.EARLY_FLAT_USDC || "1.0");
       const memo = `INPI-early-claim-${ref}`;
       const payUrl = solanaPay(env.CREATOR, amount, env.USDC_MINT, memo, "INPI Early Claim", "INPI Early Claim Fee");
-      await env.KV_CLAIMS.put(`early:${wallet}`, JSON.stringify({ wallet, ref, memo, amount, status:"pending", created_at:Date.now() }), { expirationTtl: 60*60*24*30 });
-      return json({ ok:true, ref, solana_pay_url: payUrl }, 200, cors);
+
+      await env.KV_CLAIMS.put(`early:${wallet}`, JSON.stringify({
+        wallet, ref, memo, amount, status:"pending", created_at:Date.now()
+      }), { expirationTtl: 60*60*24*30 });
+
+      // Deep-Links + optional QR-Bild
+      return json({ ok:true, ref, ...withWalletDeepLinks(payUrl) }, 200, cors);
     }
 
     // POST /api/token/claim/confirm
@@ -246,7 +280,9 @@ export default {
       const { wallet, fee_signature } = await req.json().catch(()=>({}));
       if (!wallet || !fee_signature) return json({ error:"wallet & fee_signature required" }, 400, cors);
       const job_id = randomRef();
-      await env.KV_CLAIMS.put(`job:${job_id}`, JSON.stringify({ wallet, fee_signature, queued_at:Date.now(), status:"queued" }), { expirationTtl: 60*60*24*3 });
+      await env.KV_CLAIMS.put(`job:${job_id}`, JSON.stringify({
+        wallet, fee_signature, queued_at:Date.now(), status:"queued"
+      }), { expirationTtl: 60*60*24*3 });
       return json({ ok:true, job_id }, 200, cors);
     }
 
@@ -259,9 +295,13 @@ export default {
       const id = reqJson.id ?? 1;
       try {
         const result = await rpc(env, reqJson.method, Array.isArray(reqJson.params)? reqJson.params : []);
-        return new Response(JSON.stringify({ jsonrpc:"2.0", id, result }), { status:200, headers:{ "content-type":"application/json", ...cors }});
+        return new Response(JSON.stringify({ jsonrpc:"2.0", id, result }), {
+          status:200, headers:{ "content-type":"application/json", ...cors }
+        });
       } catch (e:any) {
-        return new Response(JSON.stringify({ jsonrpc:"2.0", id, error:{ code:-32000, message:String(e?.message||e) } }), { status:200, headers:{ "content-type":"application/json", ...cors }});
+        return new Response(JSON.stringify({
+          jsonrpc:"2.0", id, error:{ code:-32000, message:String(e?.message||e) }
+        }), { status:200, headers:{ "content-type":"application/json", ...cors }});
       }
     }
 
