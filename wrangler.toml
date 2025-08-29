@@ -14,26 +14,29 @@ kv_namespaces = [
 ]
 
 [vars]
+# Mints / Wallets
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 INPI_MINT = "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1"
-CREATOR   = "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7UUtfHrCp"        # vollständiger Pubkey!
+CREATOR   = "GEFoNLncuhh4nH99GKvVEUxe59SGe74dbLG7UUtfHrCp"
 USDC_VAULT_ATA = "8PEkHngVQJoBMk68b1R5dyXjmqe3UthutSUbAYiGcpg6"
 
+# Presale (nur das Nötigste)
 PRESALE_STATE = "open"
 PRESALE_PRICE_USDC = "0.00031415"
-PUBLIC_PRICE_USDC  = "0.00034999"
+DISCOUNT_BPS   = "1000"    # 10% mit Gate-NFT
+GATE_NFT_MINT  = "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ"
+PRESALE_MIN_USDC = "1"
+PRESALE_MAX_USDC = "1000"
 
-EARLY_CLAIM_ENABLED = "true"
+# (Optional) Early-Claim kannst du später reaktivieren
+EARLY_CLAIM_ENABLED = "false"
 EARLY_FLAT_USDC     = "1.0"
 
 TGE_TS = "1764003600"
-DISCOUNT_BPS   = "1000"
-GATE_NFT_MINT  = "6xvwKXMUGfkqhs1f3ZN3KkrdvLh2vF3tX1pqLo9aYPrQ"
 
-AIRDROP_BONUS_BPS = "600"
-
-# WICHTIG: mehrere RPCs als CSV (erst Helius, dann Public)
+# RPC Failover
 SOLANA_RPC = "https://mainnet.helius-rpc.com/?api-key=d95932bb-5385-4d84-ad18-7fc66e014d58,https://api.mainnet-beta.solana.com"
 
-ALLOWED_ORIGINS = "https://inpinity.online,https://inpi-token.pages.dev,https://*.inpi-token.pages.dev"
+# CORS + Pages Upstream
+ALLOWED_ORIGINS = "https://inpinity.online,https://inpi-token.pages.dev"
 PAGES_UPSTREAM = "https://inpi-token.pages.dev"
