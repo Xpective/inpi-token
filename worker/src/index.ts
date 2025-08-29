@@ -3,7 +3,7 @@
 /**
  * Inpinity Presale Worker (ein Projekt, zwei Routen):
  *  - /token*           → Proxy zu Cloudflare Pages (PAGES_UPSTREAM), mit HTML-Rewrite auf /token/
- *  - /api/token/*      → JSON-API (Status, Wallet-Balances, Presale-Intent inkl. QR, Early-Claim, RPC-Proxy)
+ *  - /api/token/*      → JSON-API (Status, Wallet-Balances, Presale-Intent inkl. QR (nur URL), Early-Claim, RPC-Proxy)
  *
  * wrangler.toml (Auszug):
  *   main = "src/index.ts"
@@ -166,7 +166,6 @@ function solanaPayURL(
   return u.toString();
 }
 
-
 /** Rundet auf 6 Dezimalstellen (USDC) */
 function roundUsdc(n: number): number {
   return Math.round(n * 1e6) / 1e6;
@@ -206,14 +205,13 @@ async function rpcReqAny(env: Env, method: string, params: unknown[]) {
       return j.result;
     } catch (e) {
       lastErr = e;
-      // bei 403/429/5xx → nächsten RPC probieren
       continue;
     }
   }
   throw lastErr || new Error("No RPC available");
 }
 
-// --- nur der kritische Teil /api/token/wallet/balances ---
+/* -------------------- Balances / Gate (API) -------------------- */
 
 async function getTokenUiAmount(env: Env, owner: string, mint?: string): Promise<number> {
   if (!mint) return 0; // fehlendes ENV → niemals werfen
@@ -244,7 +242,6 @@ async function handleBalances(env: Env, url: URL, corsHeaders: Record<string,str
     const [usdc, inpi, gate] = await Promise.all([
       getTokenUiAmount(env, wallet, env.USDC_MINT),
       getTokenUiAmount(env, wallet, env.INPI_MINT),
-      // hat NFT → Rabatt: ebenfalls niemals werfen lassen
       (async () => {
         if (!env.GATE_NFT_MINT) return false;
         try { return (await getTokenUiAmount(env, wallet, env.GATE_NFT_MINT)) > 0; }
@@ -254,7 +251,6 @@ async function handleBalances(env: Env, url: URL, corsHeaders: Record<string,str
 
     return JSON_OK({ usdc: { uiAmount: usdc }, inpi: { uiAmount: inpi }, gate_ok: !!gate }, 200, corsHeaders);
   } catch (e: any) {
-    // WICHTIG: NIE 500 – immer 200 zurück, damit Frontend weitermachen kann.
     return JSON_OK({
       usdc:{ uiAmount: 0 },
       inpi:{ uiAmount: 0 },
@@ -293,10 +289,10 @@ async function serveTokenFromPages(env: Env, req: Request, url: URL): Promise<Re
   const upstreamOrigin = upstream.origin;
 
   // Wir probieren 2 Pfad-Varianten: mit /token und ohne
-  const keep = url.pathname;                                      // /token/...
-  const strip = url.pathname.replace(/^\/token(?=\/|$)/, "") || "/"; // /...
+  const keep = url.pathname;                                          // /token/...
+  const strip = url.pathname.replace(/^\/token(?=\/|$)/, "") || "/";  // /...
 
-  // Statische Assets: versuche beide; nimm den ersten, der kein HTML ist
+  // Statische Assets
   if (isStaticPath(url.pathname)) {
     const candidates = [keep, strip];
     for (let i=0; i<candidates.length; i++) {
@@ -304,7 +300,6 @@ async function serveTokenFromPages(env: Env, req: Request, url: URL): Promise<Re
       const r = await fetchUpstream(target.toString(), req);
       const ct = (r.headers.get("content-type") || "").toLowerCase();
 
-      // CSP entfernen, damit deine <meta http-equiv="CSP"> greift
       const h = new Headers(r.headers);
       h.delete("content-security-policy");
 
@@ -314,7 +309,6 @@ async function serveTokenFromPages(env: Env, req: Request, url: URL): Promise<Re
         return new Response(r.body, { status: r.status, headers: h });
       }
 
-      // Redirect → auf /token/... zurückbiegen
       if (r.status>=300 && r.status<400) {
         const loc = r.headers.get("location");
         if (loc && loc.startsWith("/")) {
@@ -323,17 +317,16 @@ async function serveTokenFromPages(env: Env, req: Request, url: URL): Promise<Re
         }
       }
 
-      // Letzte Chance → reiche durch
       if (i === candidates.length-1) return new Response(r.body, { status: r.status, headers: h });
     }
   }
 
-  // HTML/sonstige: "keep" bevorzugen; Redirects umbiegen; HTML umschreiben
+  // HTML/sonstige
   const target = new URL(keep + url.search, env.PAGES_UPSTREAM);
   let r = await fetchUpstream(target.toString(), req);
 
   const h = new Headers(r.headers);
-  h.delete("content-security-policy"); // CSP-Header vom Upstream entfernen
+  h.delete("content-security-policy");
   h.set("x-content-type-options", "nosniff");
 
   if (r.status>=300 && r.status<400) {
@@ -349,16 +342,13 @@ async function serveTokenFromPages(env: Env, req: Request, url: URL): Promise<Re
   if (ct.includes("text/html")) {
     let html = await r.text();
 
-    // Upstream-Origin entfernen, damit root-absolute erkannt werden
     const esc = upstreamOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     html = html.replace(new RegExp(esc, "g"), "");
 
-    // Root-absolute → /token/... (wenn nicht schon /token/)
     html = html
       .replace(/(href|src|action)=["']\/(?!token\/)/g, '$1="/token/')
       .replace(/data-(href|src)=["']\/(?!token\/)/g, 'data-$1="/token/');
 
-    // <base href="/token/"> injizieren, falls nicht vorhanden
     if (html.includes("<head") && !/base\s+href=/i.test(html)) {
       html = html.replace("<head>", '<head><base href="/token/">');
     }
@@ -369,7 +359,6 @@ async function serveTokenFromPages(env: Env, req: Request, url: URL): Promise<Re
     return new Response(html, { status: r.status, headers: h });
   }
 
-  // Statisches sonstiges
   if (r.ok) {
     if (isStaticPath(keep) && !h.has("cache-control")) h.set("cache-control", "public, max-age=600");
     return new Response(r.body, { status: r.status, headers: h });
@@ -423,15 +412,14 @@ async function handleStatus(env: Env, corsHeaders: Record<string,string>) {
   }, 200, corsHeaders);
 }
 
-
 /**
  * Presale-Intent:
  *  - Body akzeptiert:
  *      { wallet, amount_usdc } ODER { wallet, amount_inpi }
  *    Wenn amount_inpi angegeben → USDC wird serverseitig berechnet (inkl. optionalem NFT-Rabatt).
- *  - Antwort enthält ZWEI QR-Pakete:
- *      1) qr_contribute  (USDC-Betrag für den Presale)
- *      2) qr_early_fee   (1 USDC Early-Claim-Fee; nur nützlich, wenn der User sofort claimen will)
+ *  - Antwort enthält ZWEI QR-Pakete (nur URL, keine Deep-Links/externen QR-Services):
+ *      1) qr_contribute  (Solana Pay URL für Presale)
+ *      2) qr_early_fee   (Solana Pay URL für 1 USDC Early-Claim-Fee)
  */
 async function handlePresaleIntent(env: Env, req: Request, corsHeaders: Record<string,string>) {
   const body = await req.json().catch(()=>({}));
@@ -470,23 +458,19 @@ async function handlePresaleIntent(env: Env, req: Request, corsHeaders: Record<s
   const ref = randomRef();
   const memo_contrib = `INPI-${mode}-${ref}`;
 
-  // 1) Hauptzahlung (Presale) → Solana Pay URL + QR
+  // 1) Hauptzahlung (Presale) → Solana Pay URL (nur URL; Frontend rendert QR lokal)
   const payUrl = solanaPayURL(env.CREATOR, amount_usdc, env.USDC_MINT, memo_contrib, "INPI Presale", "INPI Presale Deposit");
   const qr_contribute = {
     solana_pay_url: payUrl,
-    qr_url: `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(payUrl)}`,
-    ...walletLinks(payUrl),
     amount_usdc: amount_usdc
   };
 
-  // 2) Early-Claim-Fee (optional) – gleich mitliefern
+  // 2) Early-Claim-Fee (optional) – nur URL zurückgeben
   const feeAmount = parseFloat(env.EARLY_FLAT_USDC || "1.0");
   const memo_fee = `INPI-early-claim-${ref}`;
   const feeUrl = solanaPayURL(env.CREATOR, feeAmount, env.USDC_MINT, memo_fee, "INPI Early Claim", "INPI Early Claim Fee");
   const qr_early_fee = {
     solana_pay_url: feeUrl,
-    qr_url: `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(feeUrl)}`,
-    ...walletLinks(feeUrl),
     amount_usdc: feeAmount
   };
 
@@ -554,7 +538,6 @@ async function handleEarlyIntent(env: Env, req: Request, corsHeaders: Record<str
   const memo = `INPI-early-claim-${ref}`;
   const amount = parseFloat(env.EARLY_FLAT_USDC || "1.0");
   const payUrl = solanaPayURL(env.CREATOR, amount, env.USDC_MINT, memo, "INPI Early Claim", "INPI Early Claim Fee");
-  const qr_url = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(payUrl)}`;
 
   await env.KV_CLAIMS.put(
     `early:${wallet}`,
@@ -562,7 +545,8 @@ async function handleEarlyIntent(env: Env, req: Request, corsHeaders: Record<str
     { expirationTtl: 60*60*24*30 }
   );
 
-  return JSON_OK({ ok:true, ref, qr_url, solana_pay_url: payUrl, ...walletLinks(payUrl) }, 200, corsHeaders);
+  // Nur URL zurück – Frontend rendert QR lokal
+  return JSON_OK({ ok:true, ref, solana_pay_url: payUrl }, 200, corsHeaders);
 }
 
 async function handleClaimConfirm(env: Env, req: Request, corsHeaders: Record<string,string>) {
@@ -579,12 +563,13 @@ async function handleClaimConfirm(env: Env, req: Request, corsHeaders: Record<st
   return JSON_OK({ ok:true, job_id }, 200, corsHeaders);
 }
 
-async function handleRpcProxy(env: Env, req: Request, corsHeaders: Record<string,string>) {
-  const body = await req.text();
-  // für Proxy nehmen wir den PRIMARY
-  const url = primaryRpc(env.SOLANA_RPC);
-  const r = await fetch(url, { method: "POST", headers: { "content-type":"application/json" }, body });
-  return new Response(await r.text(), { status: r.status, headers: { "content-type":"application/json", ...corsHeaders } });
+/** Minimal-Status für Claim-UI (hier ohne komplexe On-Chain-Logik; Frontend zeigt Wert informativ an) */
+async function handleClaimStatus(env: Env, url: URL, corsHeaders: Record<string,string>) {
+  const wallet = url.searchParams.get("wallet") || "";
+  if (!wallet) return JSON_OK({ pending_inpi: 0, error:"wallet required" }, 400, corsHeaders);
+
+  // Optional: könnte aus KV/Cron berechnet werden. Hier: neutrale Default-Antwort.
+  return JSON_OK({ pending_inpi: 0 }, 200, corsHeaders);
 }
 
 /* ------------------------------ Worker ------------------------------ */
@@ -644,4 +629,4 @@ export default {
     // Fallback
     return new Response("Not Found", { status: 404 });
   }
-};
+}
