@@ -22,12 +22,12 @@
   async function loadCfg(){
     const r = await fetch("./app-cfg.json?v="+(window.__INPI_VER__||Date.now()));
     const c = await r.json();
-    CFG.API  = c.API_BASE;
+    CFG.API  = c.API_BASE;       // z.B. "/api/token"
     CFG.INPI = c.INPI_MINT;
     CFG.USDC = c.USDC_MINT;
     CFG.GATE = c.GATE_NFT_MINT || c.GATE_MINT || "";
 
-    // marketplace / explorer links
+    // marketplace / explorer links (optional im DOM)
     const lnTensor = el("lnTensor"); if (lnTensor) lnTensor.href = "https://www.tensor.trade/item/"+encodeURIComponent(CFG.GATE);
     const lnME     = el("lnME");     if (lnME)     lnME.href     = "https://magiceden.io/item-details/"+encodeURIComponent(CFG.GATE);
     const lnInpiSS = el("lnInpiSS"); if (lnInpiSS) lnInpiSS.href = "https://solscan.io/token/"+encodeURIComponent(CFG.INPI);
@@ -47,10 +47,18 @@
     STATE.min = j.presale_min_usdc ?? null;
     STATE.max = j.presale_max_usdc ?? null;
 
-    const base = Number(j.presale_price_usdc || 0);
-    const disc = Number(j.discount_bps || 0);
-    STATE.pWo = base || null;
-    STATE.pWith = base ? Math.round(base*(1-disc/10000)*1e6)/1e6 : null;
+    // Preise (mit/ohne NFT) – Worker liefert base + discount_bps ODER direkt Felder
+    const priceWith = j.price_with_nft_usdc;
+    const priceWo   = j.price_without_nft_usdc;
+    if (Number.isFinite(priceWith) || Number.isFinite(priceWo)) {
+      STATE.pWith = Number.isFinite(priceWith) ? Number(priceWith) : null;
+      STATE.pWo   = Number.isFinite(priceWo)   ? Number(priceWo)   : null;
+    } else {
+      const base = Number(j.presale_price_usdc || j.public_price_usdc || 0);
+      const disc = Number(j.discount_bps || 0);
+      STATE.pWo   = base || null;
+      STATE.pWith = base ? Math.round(base*(1-disc/10000)*1e6)/1e6 : null;
+    }
 
     STATE.early.enabled = !!(j.early_claim?.enabled);
     STATE.early.flat    = Number(j.early_claim?.flat_usdc || 1);
@@ -139,7 +147,7 @@
     await window.QRCode.toCanvas(canvas, text, { width: 240, margin:1 });
   }
 
-  // ======= NEW: On-chain helpers (SPL + Token-2022 Fallback) =======
+  // ======= On-chain helpers (SPL + Token-2022 Fallback) =======
   async function getTokenUiAmountOnChain(ownerStr, mintStr){
     if (!conn) return 0;
     try{
@@ -173,7 +181,7 @@
     return amt > 0;
   }
 
-  // ======= NEW: robustere Preiswahl (mit/ohne NFT) =======
+  // ======= Preiswahl (mit/ohne NFT) =======
   function currentPrice(){
     const w  = STATE.pWith; // Preis mit NFT
     const wo = STATE.pWo;   // Preis ohne NFT
@@ -192,7 +200,7 @@
     expEl.textContent = mode==="USDC" ? `${fmt(v/p,0)} INPI` : `~ ${fmt(v*p,6)} USDC`;
   }
 
-  // ======= NEW: Balances + Gate (on-chain first, API fallback) =======
+  // ======= Balances + Gate (on-chain first, API fallback) =======
   async function refreshBalances(){
     if (!pubkey) return;
 
@@ -242,7 +250,7 @@
     }
   }
 
-  // Intent Flow (ohne Popup)
+  // ======= Intent Flow (ohne Popup) =======
   async function onIntent(){
     if (!pubkey) return alert("Bitte Wallet verbinden.");
     if (STATE.presale==="closed") return alert("Presale ist geschlossen.");
@@ -278,7 +286,7 @@
       }
     }catch{}
 
-    // 2) Server-Intent
+    // 2) Server-Intent (liefert finale Solana-Pay-URL + Deeplinks)
     try{
       const body = { wallet: pubkey.toBase58() };
       if (mode==="USDC") body.amount_usdc = Number(v);
@@ -302,7 +310,7 @@
         const earlyBox = el("early"); if (earlyBox) earlyBox.style.display = "block";
         const earRow = el("earRow");  if (earRow) earRow.style.display = "block";
         await drawQR(el("qrEarly"), j.qr_early_fee.solana_pay_url);
-        const emsg = el("emsg"); if (emsg) emsg.textContent = `Optional: 1 USDC Early-Fee scannen.`;
+        const emsg = el("emsg"); if (emsg) emsg.textContent = `Optional: ${fmt(j.qr_early_fee.amount_usdc,2)} USDC Early-Fee scannen.`;
       }
     }catch(e){
       if (msg) msg.textContent = "Intent fehlgeschlagen.";
@@ -310,7 +318,7 @@
     }
   }
 
-  // Early flow (separat)
+  // ======= Early flow (separat) =======
   async function startEarly(){
     if (!pubkey) return alert("Bitte Wallet verbinden.");
     if (!STATE.early.enabled) return alert("Early-Claim ist deaktiviert.");
