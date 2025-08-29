@@ -1,3 +1,5 @@
+<!-- Stelle sicher, dass diese Datei unter /token/app.js eingebunden ist -->
+<script>
 /* ===========================================
    Inpinity Token – Frontend (Phantom-first)
    Pfad: /pages/token/app.js
@@ -6,11 +8,15 @@
 /* ==================== KONFIG ==================== */
 const CFG = {
   // Wird ggf. dynamisch via ./app-cfg.json überschrieben
-
+  RPC: "https://api.mainnet-beta.solana.com",
 
   INPI_MINT: "GBfEVjkSn3KSmRnqe83Kb8c42DsxkJmiDCb4AbNYBYt1",
   USDC_MINT: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   API_BASE: "https://inpinity.online/api/token",
+
+  // Programme (für On-Chain-Fallbacks)
+  TOKEN_PROGRAM:   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  TOKEN_2022_PROG: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
 
   // Rabatt & NFT-Gate
   DISCOUNT_BPS_DEFAULT: 1000, // 10 %
@@ -47,12 +53,14 @@ const CFG = {
     dist_buyback_reserve_bps: 800
   },
 
-  // CSP-freundlich: jsDelivr (IIFE Build)
-  WEB3_IIFE: "https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js"
+  // IIFE Builds (CSP-freundlich)
+  WEB3_IIFE: "https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js",
+  QR_IIFE:   "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"
 };
 
 /* ================ SOLANA / PHANTOM ================ */
-let Connection = null; // wird nachgeladen, falls nötig
+let Connection = null; // wird nachgeladen
+let QRCodeLib = null; // wird nachgeladen
 
 const $ = (sel) => document.querySelector(sel);
 const el = (id) => document.getElementById(id);
@@ -63,7 +71,7 @@ function solscan(addr){ return `https://solscan.io/account/${addr}`; }
 function nowSec(){ return Math.floor(Date.now()/1000); }
 function round6(n){ return Math.round(Number(n||0)*1e6)/1e6; }
 
-/* ---------- Web3 + Provider laden ---------- */
+/* ---------- Loader ---------- */
 function getPhantomProvider(){
   if (typeof window !== "undefined"){
     if (window.phantom?.solana?.isPhantom) return window.phantom.solana;
@@ -91,6 +99,16 @@ function ensureWeb3(){
     document.head.appendChild(s);
   });
 }
+function ensureQR(){
+  return new Promise((resolve)=>{
+    if (window.QRCode){ QRCodeLib = window.QRCode; return resolve(true); }
+    const s = document.createElement("script");
+    s.src = CFG.QR_IIFE; s.async = true;
+    s.onload = ()=>{ QRCodeLib = window.QRCode; resolve(!!QRCodeLib); };
+    s.onerror = ()=>{ console.error("QR lib load error"); resolve(false); };
+    document.head.appendChild(s);
+  });
+}
 
 /* ---------- ./app-cfg.json laden (optional) ---------- */
 async function loadPublicAppCfg(){
@@ -99,24 +117,20 @@ async function loadPublicAppCfg(){
     if (!r.ok) return;
     const c = await r.json();
 
-    // Basis
     if (c?.RPC) CFG.RPC = c.RPC;
     if (c?.API_BASE) CFG.API_BASE = c.API_BASE;
     if (c?.INPI_MINT) CFG.INPI_MINT = c.INPI_MINT;
     if (c?.USDC_MINT) CFG.USDC_MINT = c.USDC_MINT;
 
-    // Rabatt & Gate
     if (c?.DISCOUNT_BPS !== undefined) {
       const v = Number(c.DISCOUNT_BPS);
       if (Number.isFinite(v) && v>=0) CFG.DISCOUNT_BPS_DEFAULT = v;
     }
     if (c?.GATE_NFT_MINT) CFG.GATE_NFT_MINT = String(c.GATE_NFT_MINT);
 
-    // Deposit / Owner
     if (c?.CREATOR_USDC_ATA) CFG.DEPOSIT_USDC_ATA_FALLBACK = c.CREATOR_USDC_ATA;
     if (c?.DEPOSIT_OWNER) CFG.DEPOSIT_OWNER_FALLBACK = c.DEPOSIT_OWNER;
 
-    // Preis + Rabatt (nur falls explizit konfiguriert)
     const base = Number(c?.PRICE_USDC_PER_INPI);
     const disc = Number(c?.DISCOUNT_BPS ?? CFG.DISCOUNT_BPS_DEFAULT);
     if (Number.isFinite(base) && base>0){
@@ -125,7 +139,6 @@ async function loadPublicAppCfg(){
       CFG.PRICE_WITH_NFT_FALLBACK = Math.round(withNft*1e6)/1e6;
     }
 
-    // Caps
     if (c?.PRESALE_MIN_USDC !== undefined) {
       const v = Number(c.PRESALE_MIN_USDC);
       CFG.PRESALE_MIN_USDC_FALLBACK = Number.isFinite(v) ? v : null;
@@ -135,19 +148,16 @@ async function loadPublicAppCfg(){
       CFG.PRESALE_MAX_USDC_FALLBACK = Number.isFinite(v) ? v : null;
     }
 
-    // TGE
     if (c?.TGE_TS !== undefined) {
       const v = Number(c.TGE_TS);
       if (Number.isFinite(v) && v>0) CFG.TGE_TS_FALLBACK = v;
     }
 
-    // Airdrop-Bonus
     if (c?.AIRDROP_BONUS_BPS !== undefined) {
       const v = Number(c.AIRDROP_BONUS_BPS);
       if (Number.isFinite(v) && v>=0) CFG.AIRDROP_BONUS_BPS_FALLBACK = v;
     }
 
-    // Tokenomics
     if (c?.SUPPLY_TOTAL !== undefined){
       const v = Number(c.SUPPLY_TOTAL);
       if (Number.isFinite(v) && v>0) CFG.SUPPLY_FALLBACK = v;
@@ -238,19 +248,20 @@ const btnCopyDeposit = $("#btnCopyDeposit");
 
 // Presale QR (Hauptzahlung)
 const payArea = $("#payArea");
-const qrContrib = $("#inpi-qr");
+const qrContrib = $("#inpi-qr"); // <img> – wird zu <canvas> ersetzt
+
 // Deep-Links
 const aPhantom = $("#link-phantom");
 const aSolflare = $("#link-solflare");
 
-// Early Claim (alter Flow – bleibt, wird aber nun auch im Intent mitgeliefert)
+// Early Claim
 const earlyBox = $("#earlyBox");
 const btnClaim = $("#btnClaim");
 const earlyArea = $("#earlyArea");
 const earlyMsg = $("#earlyMsg");
 const earlySig = $("#earlySig");
 const btnEarlyConfirm = $("#btnEarlyConfirm");
-const qrClaimNow = $("#early-qr");
+const qrClaimNow = $("#early-qr"); // <img> – wird zu <canvas> ersetzt
 
 /* ---------- Badge bei Preis ---------- */
 let gateBadge = document.createElement("span");
@@ -261,7 +272,6 @@ if (p0?.parentElement) p0.parentElement.appendChild(gateBadge);
 
 /* ---------- State ---------- */
 let connection = null, currentRpcUrl = null, provider = null, pubkey = null, POLL = null;
-let lastDeepLinks = { contribute:null, claimNow:null };
 let listenersAttached = false;
 let lastGateCheckTs = 0;
 
@@ -318,8 +328,9 @@ async function init(){
   await loadPublicAppCfg();
 
   const okWeb3 = await ensureWeb3();
-  if (!okWeb3) {
-    alert("Fehler: web3.js konnte nicht geladen werden. Bitte Seite neu laden.");
+  const okQR   = await ensureQR();
+  if (!okWeb3 || !okQR) {
+    alert("Fehler: Libraries konnten nicht geladen werden. Bitte Seite neu laden.");
     return;
   }
 
@@ -425,7 +436,7 @@ async function refreshStatus(){
       ? j.presale_max_usdc
       : (typeof CFG.PRESALE_MAX_USDC_FALLBACK === "number" ? CFG.PRESALE_MAX_USDC_FALLBACK : null);
 
-    // ---- Preislogik: Presale als Basis, NFT = Presale - Discount ----
+    // ---- Preislogik
     const presale = Number(j?.presale_price_usdc);
     const discBps = Number(j?.discount_bps ?? CFG.DISCOUNT_BPS_DEFAULT);
 
@@ -434,14 +445,12 @@ async function refreshStatus(){
     } else if (Number.isFinite(presale)) {
       STATE.price_without_nft_usdc = presale;
     }
-
     if ("price_with_nft_usdc" in (j||{})) {
       STATE.price_with_nft_usdc = Number(j.price_with_nft_usdc) || null;
     } else if (Number.isFinite(presale)) {
       const withNft = presale * (1 - (Number.isFinite(discBps) ? discBps : 0)/10000);
       STATE.price_with_nft_usdc = Math.round(withNft * 1e6) / 1e6;
     }
-
     if (STATE.price_with_nft_usdc==null && STATE.price_without_nft_usdc==null){
       STATE.price_without_nft_usdc = CFG.PRICE_WITHOUT_NFT_FALLBACK;
       STATE.price_with_nft_usdc    = CFG.PRICE_WITH_NFT_FALLBACK;
@@ -514,28 +523,40 @@ async function refreshStatus(){
 }
 function numOr(def, maybe){ const n=Number(maybe); return Number.isFinite(n)? n : def; }
 
-/* ---------- NFT-Gate Fallback (on-chain) ---------- */
-async function checkNftGateFallback(){
+/* ---------- On-chain Fallbacks (Balances + Gate, inkl. Token-2022) ---------- */
+async function getTokenUiAmountOnChain(ownerStr, mintStr){
+  if (!connection) return 0;
+  let total = 0;
+
   try{
-    if (!pubkey || !connection || !CFG.GATE_NFT_MINT) return false;
-    const now = Date.now();
-    if (now - lastGateCheckTs < 30000) return STATE.gate_ok;
-    lastGateCheckTs = now;
+    const owner = new window.solanaWeb3.PublicKey(ownerStr);
+    const mint  = new window.solanaWeb3.PublicKey(mintStr);
 
-    const owner = new window.solanaWeb3.PublicKey(pubkey.toBase58());
-    const mint  = new window.solanaWeb3.PublicKey(CFG.GATE_NFT_MINT);
-
-    const resp = await connection.getParsedTokenAccountsByOwner(owner, { mint });
-    for (const acc of (resp?.value || [])){
-      const amt = acc?.account?.data?.parsed?.info?.tokenAmount;
-      const ui = Number(amt?.uiAmount ?? 0);
-      if (ui > 0) return true;
+    // 1) Direkt per mint (klassisches SPL-Token-Programm)
+    const res1 = await connection.getParsedTokenAccountsByOwner(owner, { mint });
+    for (const v of (res1?.value||[])){
+      const amt = v?.account?.data?.parsed?.info?.tokenAmount;
+      total += Number(amt?.uiAmount ?? 0);
     }
-    return false;
-  }catch(e){
-    console.warn("NFT-Gate Fallback error:", e?.message||e);
-    return false;
-  }
+    if (total>0) return total;
+
+    // 2) Token-2022: über programId sammeln und nach mint filtern
+    const prog2022 = new window.solanaWeb3.PublicKey(CFG.TOKEN_2022_PROG);
+    const res2 = await connection.getParsedTokenAccountsByOwner(owner, { programId: prog2022 });
+    for (const v of (res2?.value||[])){
+      const info = v?.account?.data?.parsed?.info;
+      if (info?.mint === mintStr){
+        total += Number(info?.tokenAmount?.uiAmount ?? 0);
+      }
+    }
+    return total;
+  } catch { return 0; }
+}
+
+async function hasNftOnChain(ownerStr, nftMintStr){
+  if (!ownerStr || !nftMintStr) return false;
+  const amt = await getTokenUiAmountOnChain(ownerStr, nftMintStr).catch(()=>0);
+  return amt > 0;
 }
 
 /* ---------- Wallet ---------- */
@@ -544,25 +565,34 @@ async function refreshBalances(){
   try{
     const url = `${CFG.API_BASE}/wallet/balances?wallet=${encodeURIComponent(pubkey.toBase58())}&t=${Date.now()}`;
     const r = await fetch(url, { headers:{accept:"application/json"}});
+    if (!r.ok) throw new Error(`API ${r.status}`);
     const j = await r.json();
 
-    const usdc = Number(j?.usdc?.uiAmount ?? NaN);
-    const inpi = Number(j?.inpi?.uiAmount ?? NaN);
+    let usdc = Number(j?.usdc?.uiAmount ?? NaN);
+    let inpi = Number(j?.inpi?.uiAmount ?? NaN);
+
+    // Falls API kein Zahlwert liefert → on-chain fallback
+    if (!Number.isFinite(usdc) || !Number.isFinite(inpi)) {
+      usdc = await getTokenUiAmountOnChain(pubkey.toBase58(), CFG.USDC_MINT);
+      inpi = await getTokenUiAmountOnChain(pubkey.toBase58(), CFG.INPI_MINT);
+    }
+
     if (usdcBal) usdcBal.textContent = fmt(usdc,2);
     if (inpiBal) inpiBal.textContent = fmt(inpi,0);
 
     let gate = (j?.gate_ok === true);
-    if (!gate) { gate = await checkNftGateFallback(); }
+    if (!gate) { gate = await hasNftOnChain(pubkey.toBase58(), CFG.GATE_NFT_MINT); }
     STATE.gate_ok = !!gate;
 
     updatePriceRow(); updateIntentAvailability();
-    // Erwartung neu anhand Modus
     if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
   } catch(e){
-    console.error(e);
-    if (usdcBal) usdcBal.textContent="–";
-    if (inpiBal) inpiBal.textContent="–";
-    const gate = await checkNftGateFallback().catch(()=>false);
+    console.warn("API Balances fail → on-chain fallback:", e?.message||e);
+    const usdc = await getTokenUiAmountOnChain(pubkey.toBase58(), CFG.USDC_MINT);
+    const inpi = await getTokenUiAmountOnChain(pubkey.toBase58(), CFG.INPI_MINT);
+    if (usdcBal) usdcBal.textContent = fmt(usdc,2);
+    if (inpiBal) inpiBal.textContent = fmt(inpi,0);
+    const gate = await hasNftOnChain(pubkey.toBase58(), CFG.GATE_NFT_MINT).catch(()=>false);
     STATE.gate_ok = !!gate;
     updatePriceRow(); updateIntentAvailability();
   }
@@ -571,6 +601,7 @@ async function refreshClaimStatus(){
   if (!pubkey) return;
   try{
     const r = await fetch(`${CFG.API_BASE}/claim/status?wallet=${pubkey.toBase58()}&t=${Date.now()}`, { headers:{accept:"application/json"} });
+    if (!r.ok) throw new Error(`API ${r.status}`);
     const st = await r.json();
 
     const pending = Number(st?.pending_inpi || 0);
@@ -578,7 +609,7 @@ async function refreshClaimStatus(){
     const earlyExpected = $("#earlyExpected");
     if (earlyExpected) earlyExpected.textContent = fmt(pending,0) + " INPI";
   } catch(e){
-    console.error(e);
+    console.warn("claim/status fallback:", e?.message||e);
     STATE.claimable_inpi = 0;
     const earlyExpected = $("#earlyExpected");
     if (earlyExpected) earlyExpected.textContent = "–";
@@ -616,11 +647,9 @@ function onDisconnected(){
 /* ---------- Inputs ---------- */
 function injectInputModeSwitcher(){
   if (!inpAmount) return;
-  // vorhandenes Label finden
   const parentLabel = inpAmount.closest("label");
   if (parentLabel){
     parentLabel.firstChild && (parentLabel.firstChild.nodeType===3) && (parentLabel.firstChild.textContent = "Betrag");
-    // Modus Select bauen
     const wrap = document.createElement("div");
     wrap.className = "row";
     wrap.style.gap = ".5rem";
@@ -656,7 +685,6 @@ function injectInputModeSwitcher(){
     setHints();
   }
 
-  // Live Erwartung
   if (inpAmount && expectedInpi){
     inpAmount.addEventListener("input", ()=>{
       const v=Number(inpAmount.value||"0");
@@ -672,6 +700,24 @@ if (btnHowTo){
 2) Intent senden → QRs / Deep-Links nutzen (Presale & optional Early-Fee)
 3) Optional: Early-Claim separater Flow (falls nicht über den Intent genutzt)`);
   });
+}
+
+/* ---------- QR Utils (lokal rendern, kein externer Dienst) ---------- */
+function toCanvasOrSwap(imgEl){
+  if (!imgEl) return null;
+  if (imgEl.tagName === "CANVAS") return imgEl;
+  const c = document.createElement("canvas");
+  c.width = 240; c.height = 240;
+  c.className = imgEl.className || "";
+  c.style.cssText = imgEl.style?.cssText || "";
+  c.id = imgEl.id || "";
+  imgEl.replaceWith(c);
+  return c;
+}
+async function drawQR(imgOrCanvas, text, size=240){
+  const c = toCanvasOrSwap(imgOrCanvas); if (!c || !text) return;
+  await ensureQR();
+  await QRCodeLib.toCanvas(c, text, { width: size, margin: 1 });
 }
 
 /* ---------- PRESALE INTENT ---------- */
@@ -717,19 +763,19 @@ if (btnPresaleIntent){
       const j = await r.json().catch(()=>null);
       if (!r.ok || !j?.ok) throw new Error(j?.error || j?.detail || "Intent fehlgeschlagen");
 
-      // QR + Deep-Links für die USDC-Zahlung
+      // QR + Deep-Links für die USDC-Zahlung (lokal zeichnen)
       const contrib = j?.qr_contribute || {};
-      lastDeepLinks.contribute = contrib;
-      const qrUrl = contrib.qr_url || j?.qr_url || null;
+      const payLink = contrib.solana_pay_url || null;
 
       if (payArea) payArea.style.display="block";
-      if (qrContrib && qrUrl){ qrContrib.src = qrUrl; qrContrib.style.display="block"; }
+      if (qrContrib && payLink){ await drawQR(qrContrib, payLink, 240); }
+
       if (aPhantom && contrib.phantom_universal_url){ aPhantom.href = contrib.phantom_universal_url; aPhantom.style.display="inline-block"; }
       if (aSolflare && contrib.solflare_universal_url){ aSolflare.href = contrib.solflare_universal_url; aSolflare.style.display="inline-block"; }
 
       // Zweiter QR: Early-Claim-Fee (falls geliefert)
       const fee = j?.qr_early_fee;
-      if (fee) renderEarlyFeeInline(fee);
+      if (fee && fee.solana_pay_url) await renderEarlyFeeInline(fee);
 
       // UI-Text
       if (intentMsg){
@@ -749,7 +795,6 @@ if (btnPresaleIntent){
         setBonusNote();
       }
 
-      // Erwartung aktualisieren
       if (expectedInpi && inpAmount) expectedInpi.textContent = calcExpectedText(Number(inpAmount.value||"0"));
 
       await refreshStatus();
@@ -773,15 +818,17 @@ async function startEarlyFlow(){
     const j = await r.json().catch(()=>null);
     if (!r.ok || !j?.ok) throw new Error(j?.error || "Early-Intent fehlgeschlagen");
 
-    const qrUrl = j.qr_url || null;
-    lastDeepLinks.claimNow = {
-      solana_pay_url: j.solana_pay_url || null,
-      phantom_universal_url: j.phantom_universal_url || (j.solana_pay_url ? `https://phantom.app/ul/v1/solana-pay?link=${encodeURIComponent(j.solana_pay_url)}` : null),
-      solflare_universal_url: j.solflare_universal_url || (j.solana_pay_url ? `https://solflare.com/ul/v1/solana-pay?link=${encodeURIComponent(j.solana_pay_url)}` : null)
-    };
+    const payLink = j.solana_pay_url || null;
 
-    if (qrClaimNow && qrUrl) { qrClaimNow.src = qrUrl; qrClaimNow.style.display="block"; }
+    if (qrClaimNow && payLink) { await drawQR(qrClaimNow, payLink, 240); }
     if (earlyMsg) earlyMsg.textContent = `Sende ${STATE.early.flat_usdc} USDC (QR oder Link). Danach unten die Transaktions-Signatur eintragen und bestätigen.`;
+
+    // Deep-Links optional weiterhin sichtbar
+    const pUL = j.phantom_universal_url || (payLink ? `https://phantom.app/ul/v1/solana-pay?link=${encodeURIComponent(payLink)}` : null);
+    const sUL = j.solflare_universal_url || (payLink ? `https://solflare.com/ul/v1/solana-pay?link=${encodeURIComponent(payLink)}` : null);
+    const aP = $("#link-phantom-fee"), aS = $("#link-solflare-fee");
+    if (aP && pUL){ aP.href = pUL; aP.style.display="inline-block"; }
+    if (aS && sUL){ aS.href = sUL; aS.style.display="inline-block"; }
   }catch(e){ console.error(e); alert(e?.message||e); }
 }
 async function confirmEarlyFee(){
@@ -802,8 +849,7 @@ async function confirmEarlyFee(){
 }
 
 /* ---------- Early-Fee QR Inline im Presale-Bereich ---------- */
-function renderEarlyFeeInline(fee){
-  // Container innerhalb payArea hinzufügen/aktualisieren
+async function renderEarlyFeeInline(fee){
   let feeBox = document.getElementById("inlineFeeBox");
   if (!feeBox){
     feeBox = document.createElement("div");
@@ -826,12 +872,12 @@ function renderEarlyFeeInline(fee){
     payArea && payArea.appendChild(feeBox);
   }
   const img = $("#fee-qr");
-  if (img && fee?.qr_url){ img.src = fee.qr_url; img.style.display="block"; }
+  if (img && fee?.solana_pay_url){ await drawQR(img, fee.solana_pay_url, 240); img.style.display="block"; }
   const aP = $("#link-phantom-fee"); if (aP && fee?.phantom_universal_url){ aP.href = fee.phantom_universal_url; aP.style.display="inline-block"; }
   const aS = $("#link-solflare-fee"); if (aS && fee?.solflare_universal_url){ aS.href = fee.solflare_universal_url; aS.style.display="inline-block"; }
 }
 
-/* ---------- Base58 (encode)  — BUGFIX: Schleifenabbruch ---------- */
+/* ---------- Base58 (encode) ---------- */
 const B58_ALPH = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 function bs58Encode(bytes){
   if (!(bytes&&bytes.length)) return "";
@@ -849,3 +895,4 @@ function bs58Encode(bytes){
 
 /* ---------- Boot ---------- */
 window.addEventListener("DOMContentLoaded", ()=>{ init().catch(console.error); });
+</script>
