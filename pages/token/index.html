@@ -1,118 +1,321 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>INPI Presale</title>
-
-  <!-- Minimal harte CSP. Für frame-ancestors/strict-transport-security -> im Pages _headers setzen -->
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'self';
-    connect-src 'self' https://inpinity.online;
-    img-src 'self' data: https://api.qrserver.com;
-    style-src 'self' 'unsafe-inline';
-    script-src 'self' https://cdn.jsdelivr.net;
-    base-uri 'self';
-    form-action 'self';
-  ">
-
-  <link rel="stylesheet" href="./styles.css?v=1"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InPinity Token Hub | Base Network</title>
+    <!-- Uniswap Widget Bibliothek -->
+    <script src="https://embed.uniswap.org/embed.js"></script>
+    <style>
+        /* Grundlegendes Styling für die Token-Seite */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #0f0e17 0%, #1a1a2e 100%);
+            color: #fffffe;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #2a283a;
+        }
+        h1 {
+            color: #7f9cf5;
+            margin: 0;
+        }
+        .wallet-section {
+            min-width: 200px;
+        }
+        #connectButton {
+            background: #3d5afe;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        #connectButton:hover {
+            background: #2a4cff;
+            transform: translateY(-2px);
+        }
+        #walletAddress {
+            background: #24232e;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-family: monospace;
+            word-break: break-all;
+        }
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin-bottom: 50px;
+        }
+        @media (max-width: 900px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+        .card {
+            background: #1b1a23;
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid #2a283a;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        .card h2 {
+            margin-top: 0;
+            color: #7f9cf5;
+            border-bottom: 2px solid #3d5afe;
+            padding-bottom: 10px;
+        }
+        .token-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .token-item {
+            background: #24232e;
+            padding: 18px;
+            border-radius: 14px;
+            border-left: 5px solid #3d5afe;
+            transition: transform 0.3s;
+        }
+        .token-item:hover {
+            transform: translateX(5px);
+        }
+        .token-symbol {
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #7f9cf5;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .token-address {
+            font-family: monospace;
+            font-size: 0.9em;
+            color: #a0a0b0;
+            word-break: break-all;
+        }
+        .copy-btn {
+            background: #3d5afe;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.8em;
+            margin-top: 8px;
+            transition: all 0.2s;
+        }
+        .copy-btn:hover {
+            background: #2a4cff;
+        }
+        .copy-btn.copied {
+            background: #10b981;
+        }
+        #uniswapContainer {
+            min-height: 500px;
+        }
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #2a283a;
+            color: #a0a0b0;
+            font-size: 0.9em;
+        }
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            color: #7f9cf5;
+            text-decoration: none;
+            padding: 10px 20px;
+            border: 1px solid #3d5afe;
+            border-radius: 10px;
+            transition: all 0.3s;
+        }
+        .back-link:hover {
+            background: #3d5afe;
+            color: white;
+        }
+    </style>
 </head>
 <body>
-  <main>
-    <header class="row" style="justify-content:space-between">
-      <h1>INPI Presale</h1>
-      <div class="row">
-        <button id="btnHow" class="secondary">Anleitung</button>
-        <button id="btnConnect">Wallet…</button>
-      </div>
-    </header>
+    <div class="container">
+        <header>
+            <h1>🚀 InPinity Token Hub - Base Network</h1>
+            <div class="wallet-section">
+                <button id="connectButton">🔗 Wallet verbinden</button>
+                <div id="walletAddress" style="display:none;"></div>
+            </div>
+        </header>
 
-    <section class="card">
-      <div class="grid">
-        <div><div class="muted">Wallet</div><div id="waddr">—</div></div>
-        <div><div class="muted">Status</div><div id="st">—</div></div>
-        <div><div class="muted">TGE</div><div id="tge">—</div></div>
-      </div>
-    </section>
+        <div class="main-content">
+            <!-- Linke Spalte: Token-Liste -->
+            <section class="card">
+                <h2>📋 Token Contracts auf Base</h2>
+                <p>Alle offiziellen Contract-Adressen für das InPinity-Ökosystem:</p>
+                <div class="token-list" id="tokenList">
+                    <!-- Token werden hier via JavaScript eingefügt -->
+                </div>
+            </section>
 
-    <section class="card">
-      <h2>Kaufen</h2>
-      <div><b>Preis:</b> <span id="price">—</span> <span id="gateBadge" class="muted"></span></div>
-      <div class="grid" style="margin-top:8px">
-        <div>
-          <label class="muted">Betrag <small>(Eingabe)</small></label>
-          <div class="row">
-            <input id="amt" type="number" step="0.000001" min="0" placeholder="z.B. 25"/>
-            <select id="mode">
-              <option value="USDC">USDC</option>
-              <option value="INPI">INPI</option>
-            </select>
-          </div>
-          <small class="muted">Erwartung: <span id="exp">–</span></small>
+            <!-- Rechte Spalte: Uniswap Widget -->
+            <section class="card">
+                <h2>🔄 Direkt auf InPinity swappen</h2>
+                <p>Kaufe deine Tokens direkt über das sichere Uniswap Widget:</p>
+                <div id="uniswapContainer"></div>
+            </section>
         </div>
-        <div class="col">
-          <button id="btnIntent">QR erzeugen</button>
-          <small id="msg" class="muted"></small>
-        </div>
-      </div>
 
-      <div id="payRow" class="row" style="margin-top:10px;display:none">
-        <canvas id="qr" class="qr" width="240" height="240"></canvas>
-        <div class="col" style="min-width:260px">
-          <div class="muted">USDC-ATA: <span id="ata">—</span></div>
-          <small class="muted">Owner: <span id="owner">—</span></small>
-        </div>
-      </div>
-    </section>
+        <footer>
+            <p>Handel über das <a href="https://uniswap.org" target="_blank" style="color:#7f9cf5;">Uniswap Protocol</a> auf dem <a href="https://base.org" target="_blank" style="color:#7f9cf5;">Base Network</a>.</p>
+            <p><strong>Wichtig:</strong> Stelle sicher, dass deine Wallet auf das Base Network eingestellt ist.</p>
+            <a href="index.html" class="back-link">← Zurück zur InPinity Hauptseite</a>
+        </footer>
+    </div>
 
-    <section id="early" class="card" style="display:none">
-      <h2>Early-Claim</h2>
-      <p class="muted">Sofortige Gutschrift gegen Fee.</p>
-      <div class="row">
-        <button id="btnEarly">QR für Fee</button>
-        <small id="emsg" class="muted"></small>
-      </div>
-      <div id="earRow" class="row" style="display:none;margin-top:10px">
-        <canvas id="qrEarly" class="qr" width="240" height="240"></canvas>
-        <div class="col" style="min-width:260px">
-          <div class="muted">Erwartete Gutschrift: <span id="earlyExp">–</span></div>
-          <label class="muted">Fee-TX Signatur</label>
-          <input id="feeSig" placeholder="Transaktions-Signatur"/>
-          <button id="btnConfirm">Bestätigen</button>
-        </div>
-      </div>
-    </section>
+    <script>
+        // 1. TOKEN-DATEN (alle Contract-Adressen von dir)
+        const TOKENS = [
+            { symbol: "InPinity", address: "0x15ac8e2c38f0c644123e61011e7113de56038453" },
+            { symbol: "cbBTC", address: "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf" },
+            { symbol: "WBTC", address: "0x0555e30da8f98308edb960aa94c0db47230d2b9c" },
+            { symbol: "USDC", address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" },
+            { symbol: "ETH", address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" }, // Standard ETH placeholder
+            { symbol: "TOSHI", address: "0xac1bd2486aaf3b5c0fc3fd868558b082a531b2b4" }
+        ];
 
-    <section class="card">
-      <h2>Tokenomics</h2>
-      <div class="grid">
-        <div><b>Total Supply:</b> <span id="tot">—</span></div>
-        <div><b>Presale-Allocation:</b> <span id="pres">—</span></div>
-      </div>
-      <div style="overflow:auto;margin-top:8px">
-        <table>
-          <thead><tr><th>Bucket</th><th>BPS</th><th>%</th><th>INPI</th></tr></thead>
-          <tbody id="trows"></tbody>
-        </table>
-      </div>
-    </section>
+        // 2. WALLET-VERBINDUNG (einfach mit MetaMask)
+        let userAddress = null;
+        const connectButton = document.getElementById('connectButton');
+        const walletAddress = document.getElementById('walletAddress');
 
-    <section class="card">
-      <h2>NFT Links</h2>
-      <p class="muted">Gate-NFT &amp; Token auf Explorer/Marktplätzen:</p>
-      <div class="row">
-        <a id="lnTensor"  target="_blank" rel="noopener">Tensor (NFT)</a>
-        <a id="lnME"      target="_blank" rel="noopener">Magic Eden (NFT)</a>
-        <a id="lnInpiSS"  target="_blank" rel="noopener">Solscan (INPI)</a>
-        <a id="lnUsdcSS"  target="_blank" rel="noopener">Solscan (USDC)</a>
-      </div>
-    </section>
-  </main>
+        async function connectWallet() {
+            if (window.ethereum) {
+                try {
+                    const accounts = await window.ethereum.request({ 
+                        method: 'eth_requestAccounts' 
+                    });
+                    userAddress = accounts[0];
+                    updateWalletUI();
+                    console.log("Verbunden mit:", userAddress);
+                } catch (error) {
+                    console.error("Verbindung abgelehnt:", error);
+                    alert("Wallet-Verbindung wurde abgelehnt.");
+                }
+            } else {
+                alert("Bitte installiere MetaMask oder ein kompatibles Web3-Wallet!");
+                window.open("https://metamask.io", "_blank");
+            }
+        }
 
-  <!-- IIFE libs über jsDelivr, keine inline scripts -->
-  <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.4/lib/index.iife.min.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" defer></script>
-  <script src="./app.js?v=1" defer></script>
+        function updateWalletUI() {
+            if (userAddress) {
+                const shortAddr = `${userAddress.substring(0, 6)}...${userAddress.substring(38)}`;
+                connectButton.style.display = 'none';
+                walletAddress.style.display = 'block';
+                walletAddress.innerHTML = `✅ Verbunden: <strong>${shortAddr}</strong>`;
+            } else {
+                connectButton.style.display = 'block';
+                walletAddress.style.display = 'none';
+            }
+        }
+
+        // 3. TOKEN-LISTE ANZEIGEN
+        function renderTokenList() {
+            const container = document.getElementById('tokenList');
+            container.innerHTML = '';
+            
+            TOKENS.forEach(token => {
+                const tokenElement = document.createElement('div');
+                tokenElement.className = 'token-item';
+                tokenElement.innerHTML = `
+                    <span class="token-symbol">${token.symbol}</span>
+                    <span class="token-address">${token.address}</span>
+                    <button class="copy-btn" data-address="${token.address}">📋 Adresse kopieren</button>
+                `;
+                container.appendChild(tokenElement);
+            });
+
+            // Copy-Buttons Funktion hinzufügen
+            document.querySelectorAll('.copy-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const address = this.getAttribute('data-address');
+                    navigator.clipboard.writeText(address).then(() => {
+                        const originalText = this.textContent;
+                        this.textContent = '✅ Kopiert!';
+                        this.classList.add('copied');
+                        setTimeout(() => {
+                            this.textContent = originalText;
+                            this.classList.remove('copied');
+                        }, 2000);
+                    });
+                });
+            });
+        }
+
+        // 4. UNISWAP WIDGET LADEN
+        function loadUniswapWidget() {
+            if (typeof uniswapWidget !== 'undefined') {
+                uniswapWidget({
+                    container: document.getElementById('uniswapContainer'),
+                    theme: 'dark',
+                    width: '100%',
+                    height: '500px',
+                    // Dein InPinity Token als Standard-Output
+                    defaultOutputTokenAddress: '0x15ac8e2c38f0c644123e61011e7113de56038453',
+                    // Optional: ETH als Standard-Input
+                    defaultInputTokenAddress: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+                    // Chain auf Base setzen (Chain-ID 8453)
+                    chainId: 8453
+                });
+                console.log("Uniswap Widget geladen");
+            } else {
+                console.log("Warte auf Uniswap Widget...");
+                setTimeout(loadUniswapWidget, 500);
+            }
+        }
+
+        // 5. ALLES INITIALISIEREN
+        document.addEventListener('DOMContentLoaded', () => {
+            // Wallet-Button Event
+            connectButton.addEventListener('click', connectWallet);
+            
+            // Token-Liste rendern
+            renderTokenList();
+            
+            // Uniswap Widget laden
+            loadUniswapWidget();
+            
+            // Auf Wallet-Änderungen reagieren
+            if (window.ethereum) {
+                window.ethereum.on('accountsChanged', (accounts) => {
+                    userAddress = accounts[0] || null;
+                    updateWalletUI();
+                });
+                
+                // Auf Netzwerk-Wechsel reagieren
+                window.ethereum.on('chainChanged', (chainId) => {
+                    if (chainId !== '0x2105') { // 0x2105 = Base Mainnet (8453)
+                        alert("Bitte wechsle zum Base Network (Chain ID: 8453)!");
+                    }
+                });
+            }
+        });
+    </script>
 </body>
 </html>
