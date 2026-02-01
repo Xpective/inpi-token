@@ -4,46 +4,60 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>InPinity Token Hub | Base Network</title>
-    <!-- Uniswap Widget Bibliothek -->
-    <script src="https://embed.uniswap.org/embed.js"></script>
     <style>
-        /* Grundlegendes Styling für die Token-Seite */
+        :root {
+            --primary: #7f9cf5;
+            --primary-dark: #3d5afe;
+            --background: #0f0e17;
+            --card-bg: #1b1a23;
+            --text: #fffffe;
+            --text-muted: #a0a0b0;
+            --border: #2a283a;
+            --success: #10b981;
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
             margin: 0;
             padding: 20px;
-            background: linear-gradient(135deg, #0f0e17 0%, #1a1a2e 100%);
-            color: #fffffe;
+            background: linear-gradient(135deg, var(--background) 0%, #1a1a2e 100%);
+            color: var(--text);
             min-height: 100vh;
+            line-height: 1.6;
         }
         .container {
             max-width: 1200px;
             margin: 0 auto;
         }
         header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            text-align: center;
             margin-bottom: 40px;
-            flex-wrap: wrap;
             padding-bottom: 20px;
-            border-bottom: 1px solid #2a283a;
+            border-bottom: 1px solid var(--border);
+        }
+        .logo-title {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
         }
         h1 {
-            color: #7f9cf5;
+            color: var(--primary);
             margin: 0;
+            font-size: 2.5em;
         }
         .wallet-section {
-            min-width: 200px;
+            margin-top: 20px;
         }
         #connectButton {
-            background: #3d5afe;
+            background: var(--primary-dark);
             color: white;
             border: none;
             padding: 12px 24px;
             border-radius: 12px;
             cursor: pointer;
             font-weight: bold;
+            font-size: 1em;
             transition: all 0.3s;
         }
         #connectButton:hover {
@@ -51,11 +65,12 @@
             transform: translateY(-2px);
         }
         #walletAddress {
-            background: #24232e;
+            background: var(--card-bg);
             padding: 12px 20px;
             border-radius: 12px;
             font-family: monospace;
-            word-break: break-all;
+            display: inline-block;
+            margin-top: 10px;
         }
         .main-content {
             display: grid;
@@ -64,258 +79,396 @@
             margin-bottom: 50px;
         }
         @media (max-width: 900px) {
-            .main-content {
-                grid-template-columns: 1fr;
-            }
+            .main-content { grid-template-columns: 1fr; }
         }
         .card {
-            background: #1b1a23;
+            background: var(--card-bg);
             border-radius: 20px;
             padding: 30px;
-            border: 1px solid #2a283a;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
         .card h2 {
             margin-top: 0;
-            color: #7f9cf5;
-            border-bottom: 2px solid #3d5afe;
+            color: var(--primary);
+            border-bottom: 2px solid var(--primary-dark);
             padding-bottom: 10px;
         }
-        .token-list {
+        .info-box {
+            background: rgba(127, 156, 245, 0.1);
+            border-left: 4px solid var(--primary);
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .info-box.warning {
+            background: rgba(245, 158, 11, 0.1);
+            border-left-color: #f59e0b;
+        }
+        .progress-section {
+            margin: 30px 0;
+        }
+        .progress-label {
             display: flex;
-            flex-direction: column;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .progress-bar {
+            height: 12px;
+            background: var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--success));
+            width: 15%; /* Anfangsstand des Pools - anpassbar */
+            border-radius: 6px;
+            transition: width 1s ease;
+        }
+        .token-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
             gap: 15px;
+            margin-top: 20px;
         }
         .token-item {
             background: #24232e;
             padding: 18px;
             border-radius: 14px;
-            border-left: 5px solid #3d5afe;
+            border-left: 5px solid var(--primary-dark);
             transition: transform 0.3s;
         }
         .token-item:hover {
-            transform: translateX(5px);
+            transform: translateY(-3px);
         }
         .token-symbol {
             font-weight: bold;
-            font-size: 1.1em;
-            color: #7f9cf5;
+            color: var(--primary);
             display: block;
-            margin-bottom: 5px;
+            font-size: 1.1em;
         }
         .token-address {
             font-family: monospace;
-            font-size: 0.9em;
-            color: #a0a0b0;
+            font-size: 0.85em;
+            color: var(--text-muted);
             word-break: break-all;
+            margin: 8px 0;
         }
         .copy-btn {
-            background: #3d5afe;
+            background: var(--primary-dark);
             color: white;
             border: none;
             padding: 6px 12px;
             border-radius: 8px;
             cursor: pointer;
             font-size: 0.8em;
-            margin-top: 8px;
             transition: all 0.2s;
         }
         .copy-btn:hover {
             background: #2a4cff;
         }
-        .copy-btn.copied {
-            background: #10b981;
+        .partner-logos {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            margin: 25px 0;
         }
-        #uniswapContainer {
-            min-height: 500px;
+        .partner-logo {
+            height: 40px;
+            filter: grayscale(0.5);
+            opacity: 0.8;
+            transition: all 0.3s;
+        }
+        .partner-logo:hover {
+            filter: grayscale(0);
+            opacity: 1;
         }
         footer {
             text-align: center;
             margin-top: 50px;
             padding-top: 20px;
-            border-top: 1px solid #2a283a;
-            color: #a0a0b0;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
             font-size: 0.9em;
         }
-        .back-link {
-            display: inline-block;
-            margin-top: 20px;
-            color: #7f9cf5;
+        .social-links a {
+            color: var(--primary);
+            margin: 0 10px;
             text-decoration: none;
-            padding: 10px 20px;
-            border: 1px solid #3d5afe;
-            border-radius: 10px;
-            transition: all 0.3s;
-        }
-        .back-link:hover {
-            background: #3d5afe;
-            color: white;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🚀 InPinity Token Hub - Base Network</h1>
-            <div class="wallet-section">
-                <button id="connectButton">🔗 Wallet verbinden</button>
-                <div id="walletAddress" style="display:none;"></div>
-            </div>
-        </header>
-
-        <div class="main-content">
-            <!-- Linke Spalte: Token-Liste -->
-            <section class="card">
-                <h2>📋 Token Contracts auf Base</h2>
-                <p>Alle offiziellen Contract-Adressen für das InPinity-Ökosystem:</p>
-                <div class="token-list" id="tokenList">
-                    <!-- Token werden hier via JavaScript eingefügt -->
-                </div>
-            </section>
-
-            <!-- Rechte Spalte: Uniswap Widget -->
-            <section class="card">
-                <h2>🔄 Direkt auf InPinity swappen</h2>
-                <p>Kaufe deine Tokens direkt über das sichere Uniswap Widget:</p>
-                <div id="uniswapContainer"></div>
-            </section>
+<div class="container">
+    <header>
+        <div class="logo-title">
+            <h1>🚀 InPinity Token Hub</h1>
         </div>
+        <p>Die dezentrale Handelsplattform auf <strong>Base Network</strong> – für eine wachsende Community.</p>
+        
+        <div class="wallet-section">
+            <button id="connectButton">🔗 Wallet mit Base verbinden</button>
+            <div id="walletAddress" style="display:none;"></div>
+        </div>
+        
+        <div class="info-box">
+            <strong>📈 Deine Chance, früh dabei zu sein!</strong> Der InPinity-Pool startet klein und wächst mit jedem Beitrag. Jeder Kauf erhöht die Liquidität und stärkt das gesamte Ökosystem.
+        </div>
+    </header>
 
-        <footer>
-            <p>Handel über das <a href="https://uniswap.org" target="_blank" style="color:#7f9cf5;">Uniswap Protocol</a> auf dem <a href="https://base.org" target="_blank" style="color:#7f9cf5;">Base Network</a>.</p>
-            <p><strong>Wichtig:</strong> Stelle sicher, dass deine Wallet auf das Base Network eingestellt ist.</p>
-            <a href="index.html" class="back-link">← Zurück zur InPinity Hauptseite</a>
-        </footer>
+    <div class="main-content">
+        <!-- LINKER TEIL: TOKEN & ERKLÄRUNG -->
+        <section class="card">
+            <h2>📋 Unser Token-Ökosystem auf Base</h2>
+            <p>Alle offiziellen Contract-Adressen für den Handel und die Pool-Bildung:</p>
+            
+            <div class="token-grid" id="tokenList"></div>
+            
+            <div class="info-box">
+                <h3>🔍 Wie funktioniert das mit den Pools?</h3>
+                <p>Jeder Pool (z.B. INPI/ETH) ist wie ein gemeinsamer Geldtopf, der den Handel ermöglicht. Wenn du kaufst:</p>
+                <ol>
+                    <li><strong>Du erhältst INPI-Token</strong></li>
+                    <li><strong>Der Pool erhält mehr Liquidität</strong> (wird "tiefer")</li>
+                    <li><strong>Zukünftige Händler zahlen Gebühren</strong>, die an Pool-Besitzer ausgeschüttet werden</li>
+                </ol>
+            </div>
+            
+            <div class="progress-section">
+                <div class="progress-label">
+                    <span>Aktuelle Pool-Stärke (INPI/ETH)</span>
+                    <span id="progressPercent">15%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="poolProgress"></div>
+                </div>
+                <p style="font-size:0.9em; margin-top:8px; color:var(--text-muted)">
+                    Unser Ziel: 100% für nachhaltige Liquidität. <strong>Jeder Kauf hilft!</strong>
+                </p>
+            </div>
+        </section>
+
+        <!-- RECHTER TEIL: TRADE & PARTNERS -->
+        <section class="card">
+            <h2>🔄 Direkter Kauf über Uniswap</h2>
+            <p>Kaufe <strong>INPI</strong> sicher mit ETH, USDC oder anderen Base-Tokens:</p>
+            
+            <!-- UNISWAP IFRAME -->
+            <iframe
+                src="https://app.uniswap.org/#/swap?chain=base&outputCurrency=0x15ac8e2c38f0c644123e61011e7113de56038453"
+                width="100%"
+                height="520"
+                style="border:0; border-radius:16px; margin:20px 0;"
+                allow="clipboard-write; encrypted-media"
+                loading="lazy"
+                title="Uniswap Swap Interface">
+            </iframe>
+            
+            <div class="info-box warning">
+                <strong>⚠️ Wichtig für den Kauf:</strong>
+                <ul style="margin:8px 0; padding-left:20px;">
+                    <li>Deine Wallet muss auf <strong>Base Network (Chain ID: 8453)</strong> eingestellt sein</li>
+                    <li>Starte mit kleinen Beträgen, um den Prozess kennenzulernen</li>
+                    <li>Behalte genug ETH für Gas-Gebühren (ca. $0.01-$0.10)</li>
+                </ul>
+            </div>
+            
+            <h3>🤝 Unsere Partnerschaften & Vision</h3>
+            <p>Wir arbeiten daran, InPinity zu einem zentralen Hub auf Base zu machen:</p>
+            
+            <div class="partner-logos">
+                <img src="https://raw.githubusercontent.com/Uniswap/brand-kit/main/logo/logo.svg" alt="Uniswap Logo" class="partner-logo" style="height:35px;">
+                <span style="color:var(--text-muted)">×</span>
+                <img src="https://base.org/logo.svg" alt="Base Logo" class="partner-logo" style="height:35px;">
+                <span style="color:var(--text-muted)">×</span>
+                <span style="font-weight:bold; color:var(--primary)">ToshiMart</span>
+            </div>
+            
+            <p><strong>Unser Ziel:</strong> Eine enge Integration mit <strong>ToshiMart auf Base</strong> und dem <strong>Uniswap-Protokoll</strong>, um unseren Nutzern den reibungslosesten Handelsweg zu bieten. Jeder Kauf bringt uns diesem Ziel näher.</p>
+            
+            <div style="background:rgba(16, 185, 129, 0.1); padding:15px; border-radius:10px; margin-top:20px;">
+                <strong>🎯 Der Plan für Pool-Besitzer:</strong>
+                <p>Nach deinem Kauf kannst du deine Token in den Pool einzahlen ("Staken") und dadurch:</p>
+                <ul>
+                    <li>An Handelsgebühren verdienen (prozentualer Anteil)</li>
+                    <li>Die Liquidität des Pools erhöhen</li>
+                    <li>Später jederzeit austreten ("Unstake") und deine Anteile zurückerhalten</li>
+                </ul>
+            </div>
+        </section>
     </div>
 
-    <script>
-        // 1. TOKEN-DATEN (alle Contract-Adressen von dir)
-        const TOKENS = [
-            { symbol: "InPinity", address: "0x15ac8e2c38f0c644123e61011e7113de56038453" },
-            { symbol: "cbBTC", address: "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf" },
-            { symbol: "WBTC", address: "0x0555e30da8f98308edb960aa94c0db47230d2b9c" },
-            { symbol: "USDC", address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" },
-            { symbol: "ETH", address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" }, // Standard ETH placeholder
-            { symbol: "TOSHI", address: "0xac1bd2486aaf3b5c0fc3fd868558b082a531b2b4" }
-        ];
+    <footer>
+        <p>
+            <strong>InPinity auf Base</strong> – Gemeinsam wachsen wir.
+            <br>
+            Handels-Tools bereitgestellt durch <a href="https://uniswap.org" target="_blank">Uniswap</a> auf dem <a href="https://base.org" target="_blank">Base Network</a>.
+        </p>
+        
+        <div class="social-links" style="margin:20px 0;">
+            <a href="https://inpinity.online" target="_blank">🌐 Haupt-Website</a>
+            |
+            <a href="https://x.com/inpinity1" target="_blank">🐦 Twitter / X</a>
+            |
+            <a href="https://t.me/yourgroup" target="_blank">📱 Telegram</a>
+        </div>
+        
+        <p style="font-size:0.8em; color:var(--text-muted); max-width:800px; margin:20px auto;">
+            <strong>Hinweis:</strong> Kryptowährungsinvestitionen sind mit Risiken verbunden. Diese Seite dient nur zu Informationszwecken.
+            Der InPinity-Pool befindet sich in der frühen Wachstumsphase – kleine Beträge zu Beginn helfen der Gemeinschaft am meisten.
+        </p>
+        
+        <a href="index.html" style="color:var(--primary); text-decoration:none; font-weight:bold;">← Zurück zur InPinity-Hauptseite</a>
+    </footer>
+</div>
 
-        // 2. WALLET-VERBINDUNG (einfach mit MetaMask)
-        let userAddress = null;
-        const connectButton = document.getElementById('connectButton');
-        const walletAddress = document.getElementById('walletAddress');
+<script>
+// 1. KOMPLETTE TOKEN-LISTE (alle deine Adressen)
+const TOKENS = [
+    { symbol: "InPinity", address: "0x15ac8e2c38f0c644123e61011e7113de56038453", description: "Unser Haupt-Token" },
+    { symbol: "cbBTC", address: "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf", description: "Bitcoin auf Base (cbBTC)" },
+    { symbol: "WBTC", address: "0x0555e30da8f98308edb960aa94c0db47230d2b9c", description: "Wrapped Bitcoin" },
+    { symbol: "USDC", address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", description: "USD Coin auf Base" },
+    { symbol: "ETH", address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", description: "Native Ether auf Base" },
+    { symbol: "TOSHI", address: "0xac1bd2486aaf3b5c0fc3fd868558b082a531b2b4", description: "Toshi Token" }
+];
 
-        async function connectWallet() {
-            if (window.ethereum) {
-                try {
-                    const accounts = await window.ethereum.request({ 
-                        method: 'eth_requestAccounts' 
-                    });
-                    userAddress = accounts[0];
-                    updateWalletUI();
-                    console.log("Verbunden mit:", userAddress);
-                } catch (error) {
-                    console.error("Verbindung abgelehnt:", error);
-                    alert("Wallet-Verbindung wurde abgelehnt.");
-                }
-            } else {
-                alert("Bitte installiere MetaMask oder ein kompatibles Web3-Wallet!");
-                window.open("https://metamask.io", "_blank");
+// 2. TOKEN-LISTE ANZEIGEN
+function renderTokenList() {
+    const container = document.getElementById('tokenList');
+    container.innerHTML = '';
+    
+    TOKENS.forEach(token => {
+        const div = document.createElement('div');
+        div.className = 'token-item';
+        div.innerHTML = `
+            <span class="token-symbol">${token.symbol}</span>
+            <small style="color:var(--text-muted); display:block; margin:4px 0;">${token.description}</small>
+            <div class="token-address">${token.address}</div>
+            <button class="copy-btn" onclick="copyToClipboard('${token.address}', this)">
+                📋 Kopieren
+            </button>
+        `;
+        container.appendChild(div);
+    });
+}
+
+// 3. COPY-TO-CLIPBOARD FUNKTION
+function copyToClipboard(text, button) {
+    navigator.clipboard.writeText(text).then(() => {
+        const original = button.innerHTML;
+        button.innerHTML = '✅ Kopiert!';
+        button.style.background = '#10b981';
+        setTimeout(() => {
+            button.innerHTML = original;
+            button.style.background = '';
+        }, 2000);
+    });
+}
+
+// 4. WALLET-CONNECT (vereinfacht)
+let userAddress = null;
+const connectButton = document.getElementById('connectButton');
+const walletAddress = document.getElementById('walletAddress');
+
+connectButton.onclick = async () => {
+    if (!window.ethereum) {
+        alert('Bitte installiere MetaMask oder ein kompatibles Wallet!');
+        window.open('https://metamask.io', '_blank');
+        return;
+    }
+    
+    try {
+        // Netzwerk auf Base prüfen/wechseln
+        const chainId = await ethereum.request({ method: 'eth_chainId' });
+        if (chainId !== '0x2105') { // 0x2105 = Base Mainnet (8453)
+            try {
+                await ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: '0x2105' }],
+                });
+            } catch (switchError) {
+                // Falls Base nicht im Wallet ist, hinzufügen
+                await ethereum.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [{
+                        chainId: '0x2105',
+                        chainName: 'Base Mainnet',
+                        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+                        rpcUrls: ['https://mainnet.base.org'],
+                        blockExplorerUrls: ['https://basescan.org']
+                    }]
+                });
             }
         }
+        
+        // Konten anfordern
+        const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+        userAddress = accounts[0];
+        
+        // UI updaten
+        connectButton.style.display = 'none';
+        walletAddress.style.display = 'block';
+        const shortAddr = userAddress.slice(0,6) + '...' + userAddress.slice(-4);
+        walletAddress.innerHTML = `✅ Verbunden: <strong>${shortAddr}</strong> (Base Network)`;
+        
+        // Pool-Fortschritt simulieren (später durch echte Daten ersetzen)
+        simulatePoolGrowth();
+        
+    } catch (error) {
+        console.error('Wallet-Fehler:', error);
+        alert('Verbindung fehlgeschlagen: ' + (error.message || 'Unbekannter Fehler'));
+    }
+};
 
-        function updateWalletUI() {
-            if (userAddress) {
-                const shortAddr = `${userAddress.substring(0, 6)}...${userAddress.substring(38)}`;
-                connectButton.style.display = 'none';
-                walletAddress.style.display = 'block';
-                walletAddress.innerHTML = `✅ Verbunden: <strong>${shortAddr}</strong>`;
-            } else {
-                connectButton.style.display = 'block';
-                walletAddress.style.display = 'none';
-            }
+// 5. POOL-WACHSTUM ANIMIEREN (Simulation für den Anfang)
+function simulatePoolGrowth() {
+    const progressBar = document.getElementById('poolProgress');
+    const percentLabel = document.getElementById('progressPercent');
+    
+    // Zufälliges Wachstum simulieren (später durch echte Pool-Daten ersetzen)
+    const currentPercent = 15; // Startwert
+    const targetPercent = currentPercent + Math.random() * 5;
+    
+    let percent = currentPercent;
+    const interval = setInterval(() => {
+        percent += 0.2;
+        progressBar.style.width = percent + '%';
+        percentLabel.textContent = Math.round(percent) + '%';
+        
+        if (percent >= targetPercent) {
+            clearInterval(interval);
+            percentLabel.innerHTML += ' <small style="color:var(--success)">(+ heute)</small>';
         }
+    }, 30);
+}
 
-        // 3. TOKEN-LISTE ANZEIGEN
-        function renderTokenList() {
-            const container = document.getElementById('tokenList');
-            container.innerHTML = '';
-            
-            TOKENS.forEach(token => {
-                const tokenElement = document.createElement('div');
-                tokenElement.className = 'token-item';
-                tokenElement.innerHTML = `
-                    <span class="token-symbol">${token.symbol}</span>
-                    <span class="token-address">${token.address}</span>
-                    <button class="copy-btn" data-address="${token.address}">📋 Adresse kopieren</button>
-                `;
-                container.appendChild(tokenElement);
-            });
-
-            // Copy-Buttons Funktion hinzufügen
-            document.querySelectorAll('.copy-btn').forEach(button => {
-                button.addEventListener('click', function() {
-                    const address = this.getAttribute('data-address');
-                    navigator.clipboard.writeText(address).then(() => {
-                        const originalText = this.textContent;
-                        this.textContent = '✅ Kopiert!';
-                        this.classList.add('copied');
-                        setTimeout(() => {
-                            this.textContent = originalText;
-                            this.classList.remove('copied');
-                        }, 2000);
-                    });
-                });
-            });
-        }
-
-        // 4. UNISWAP WIDGET LADEN
-        function loadUniswapWidget() {
-            if (typeof uniswapWidget !== 'undefined') {
-                uniswapWidget({
-                    container: document.getElementById('uniswapContainer'),
-                    theme: 'dark',
-                    width: '100%',
-                    height: '500px',
-                    // Dein InPinity Token als Standard-Output
-                    defaultOutputTokenAddress: '0x15ac8e2c38f0c644123e61011e7113de56038453',
-                    // Optional: ETH als Standard-Input
-                    defaultInputTokenAddress: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
-                    // Chain auf Base setzen (Chain-ID 8453)
-                    chainId: 8453
-                });
-                console.log("Uniswap Widget geladen");
-            } else {
-                console.log("Warte auf Uniswap Widget...");
-                setTimeout(loadUniswapWidget, 500);
-            }
-        }
-
-        // 5. ALLES INITIALISIEREN
-        document.addEventListener('DOMContentLoaded', () => {
-            // Wallet-Button Event
-            connectButton.addEventListener('click', connectWallet);
-            
-            // Token-Liste rendern
-            renderTokenList();
-            
-            // Uniswap Widget laden
-            loadUniswapWidget();
-            
-            // Auf Wallet-Änderungen reagieren
-            if (window.ethereum) {
-                window.ethereum.on('accountsChanged', (accounts) => {
-                    userAddress = accounts[0] || null;
-                    updateWalletUI();
-                });
-                
-                // Auf Netzwerk-Wechsel reagieren
-                window.ethereum.on('chainChanged', (chainId) => {
-                    if (chainId !== '0x2105') { // 0x2105 = Base Mainnet (8453)
-                        alert("Bitte wechsle zum Base Network (Chain ID: 8453)!");
-                    }
-                });
+// 6. SEITE INITIALISIEREN
+document.addEventListener('DOMContentLoaded', () => {
+    renderTokenList();
+    
+    // Automatisch verbinden, wenn bereits verbunden
+    if (window.ethereum && window.ethereum.selectedAddress) {
+        userAddress = window.ethereum.selectedAddress;
+        connectButton.style.display = 'none';
+        walletAddress.style.display = 'block';
+        const shortAddr = userAddress.slice(0,6) + '...' + userAddress.slice(-4);
+        walletAddress.innerHTML = `✅ Verbunden: <strong>${shortAddr}</strong>`;
+        simulatePoolGrowth();
+    }
+    
+    // Auf Netzwerk-Wechsel reagieren
+    if (window.ethereum) {
+        window.ethereum.on('chainChanged', (chainId) => {
+            if (chainId !== '0x2105') {
+                alert('Bitte wechsle zurück zum Base Network (Chain ID: 8453) für den InPinity-Handel.');
             }
         });
-    </script>
+    }
+});
+</script>
 </body>
 </html>
