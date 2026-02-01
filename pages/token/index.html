@@ -1,474 +1,899 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>InPinity Token Hub | Base Network</title>
     <style>
+        /* GOLDEN RATIO INSPIRED DESIGN SYSTEM */
         :root {
-            --primary: #7f9cf5;
-            --primary-dark: #3d5afe;
-            --background: #0f0e17;
-            --card-bg: #1b1a23;
-            --text: #fffffe;
-            --text-muted: #a0a0b0;
-            --border: #2a283a;
-            --success: #10b981;
+            /* Golden Ratio Colors - Cyan/Purple Harmony */
+            --primary-cyan: #00FFFF;
+            --primary-purple: #8A2BE2;
+            --cyan-light: rgba(0, 255, 255, 0.1);
+            --cyan-medium: rgba(0, 255, 255, 0.3);
+            --purple-light: rgba(138, 43, 226, 0.1);
+            --purple-medium: rgba(138, 43, 226, 0.3);
+            
+            /* Complementary Neutrals (Golden Ratio derived) */
+            --bg-dark: #0A0A1A; /* Base - 100% */
+            --bg-card: #111128; /* 61.8% lighter than base */
+            --bg-element: #1A1A35; /* 38.2% lighter than card */
+            --text-primary: #F0F0FF;
+            --text-secondary: #B8B8D0;
+            --text-muted: #8888AA;
+            --border-color: #2A2A55;
+            
+            /* Golden Ratio proportions */
+            --phi: 1.618;
+            --golden-large: 61.8%;
+            --golden-small: 38.2%;
         }
+        
+        /* Golden Ratio Typography Scale */
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+            font-size: 16px; /* Base */
+            line-height: 1.618; /* Golden ratio */
+        }
+        
+        h1 { font-size: calc(16px * var(--phi) * var(--phi)); } /* φ² ≈ 4.236em */
+        h2 { font-size: calc(16px * var(--phi)); } /* φ ≈ 2.618em */
+        h3 { font-size: calc(16px * 1.5); }
+        
+        /* MAIN STYLING */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
             margin: 0;
             padding: 20px;
-            background: linear-gradient(135deg, var(--background) 0%, #1a1a2e 100%);
-            color: var(--text);
+            background: var(--bg-dark);
+            color: var(--text-primary);
             min-height: 100vh;
-            line-height: 1.6;
+            line-height: var(--phi);
+            background-image: 
+                radial-gradient(circle at 20% 80%, var(--purple-light) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, var(--cyan-light) 0%, transparent 50%);
         }
+        
         .container {
-            max-width: 1200px;
+            max-width: 1600px; /* Golden ratio of typical 1200px */
             margin: 0 auto;
+            padding: 0 20px;
         }
+        
+        /* GOLDEN RATIO HEADER */
         header {
             text-align: center;
-            margin-bottom: 40px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid var(--border);
+            margin-bottom: 60px; /* Golden ratio of container */
+            padding-bottom: 40px;
+            border-bottom: 1px solid var(--border-color);
+            position: relative;
         }
+        
+        header::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 38.2%; /* Golden small */
+            width: 23.6%; /* Golden small of golden small */
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary-purple), var(--primary-cyan));
+            border-radius: 3px;
+        }
+        
         .logo-title {
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
-            gap: 15px;
-            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 40px;
         }
+        
+        .golden-spiral {
+            width: 80px;
+            height: 80px;
+            background: conic-gradient(
+                from 0deg,
+                var(--primary-cyan),
+                var(--primary-purple),
+                var(--primary-cyan)
+            );
+            border-radius: 50%;
+            position: relative;
+            animation: spin 20s linear infinite;
+        }
+        
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+        
         h1 {
-            color: var(--primary);
+            color: var(--text-primary);
             margin: 0;
-            font-size: 2.5em;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-cyan), var(--primary-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.02em;
         }
+        
+        .tagline {
+            color: var(--text-secondary);
+            font-size: 1.2em;
+            max-width: 800px;
+            margin: 20px auto;
+            position: relative;
+        }
+        
+        /* WALLET SECTION */
         .wallet-section {
-            margin-top: 20px;
+            margin-top: 40px;
         }
+        
         #connectButton {
-            background: var(--primary-dark);
-            color: white;
+            background: linear-gradient(135deg, var(--primary-purple), var(--primary-cyan));
+            color: var(--bg-dark);
             border: none;
-            padding: 12px 24px;
+            padding: 16px 32px;
             border-radius: 12px;
             cursor: pointer;
-            font-weight: bold;
-            font-size: 1em;
-            transition: all 0.3s;
+            font-weight: 700;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
         }
+        
+        #connectButton::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s ease;
+            z-index: -1;
+        }
+        
         #connectButton:hover {
-            background: #2a4cff;
             transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(138, 43, 226, 0.3);
         }
+        
+        #connectButton:hover::before {
+            left: 100%;
+        }
+        
         #walletAddress {
-            background: var(--card-bg);
-            padding: 12px 20px;
+            background: var(--bg-element);
+            padding: 16px 24px;
             border-radius: 12px;
-            font-family: monospace;
+            font-family: 'Courier New', monospace;
             display: inline-block;
-            margin-top: 10px;
-        }
-        .main-content {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-            margin-bottom: 50px;
-        }
-        @media (max-width: 900px) {
-            .main-content { grid-template-columns: 1fr; }
-        }
-        .card {
-            background: var(--card-bg);
-            border-radius: 20px;
-            padding: 30px;
-            border: 1px solid var(--border);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        }
-        .card h2 {
-            margin-top: 0;
-            color: var(--primary);
-            border-bottom: 2px solid var(--primary-dark);
-            padding-bottom: 10px;
-        }
-        .info-box {
-            background: rgba(127, 156, 245, 0.1);
-            border-left: 4px solid var(--primary);
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 0 8px 8px 0;
-        }
-        .info-box.warning {
-            background: rgba(245, 158, 11, 0.1);
-            border-left-color: #f59e0b;
-        }
-        .progress-section {
-            margin: 30px 0;
-        }
-        .progress-label {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-        }
-        .progress-bar {
-            height: 12px;
-            background: var(--border);
-            border-radius: 6px;
+            margin-top: 20px;
+            border: 1px solid var(--border-color);
+            position: relative;
             overflow: hidden;
         }
-        .progress-fill {
+        
+        #walletAddress::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
             height: 100%;
-            background: linear-gradient(90deg, var(--primary), var(--success));
-            width: 15%; /* Anfangsstand des Pools - anpassbar */
-            border-radius: 6px;
-            transition: width 1s ease;
+            background: linear-gradient(to bottom, var(--primary-cyan), var(--primary-purple));
         }
+        
+        /* MAIN CONTENT - GOLDEN RATIO GRID */
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1.618fr; /* Golden ratio columns */
+            gap: 60px;
+            margin-bottom: 80px;
+        }
+        
+        @media (max-width: 1100px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+        }
+        
+        /* CARDS WITH GOLDEN PROPORTIONS */
+        .card {
+            background: var(--bg-card);
+            border-radius: 20px;
+            padding: 40px;
+            border: 1px solid var(--border-color);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary-purple), var(--primary-cyan));
+        }
+        
+        .card h2 {
+            margin-top: 0;
+            color: var(--text-primary);
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .card h2::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 80px; /* Golden proportion */
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary-cyan), transparent);
+        }
+        
+        /* TOKEN GRID WITH GOLDEN RATIO SPACING */
         .token-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 24px; /* Golden ratio of base spacing */
+            margin-top: 30px;
         }
+        
         .token-item {
-            background: #24232e;
-            padding: 18px;
-            border-radius: 14px;
-            border-left: 5px solid var(--primary-dark);
-            transition: transform 0.3s;
+            background: var(--bg-element);
+            padding: 24px;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
         }
+        
+        .token-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, var(--cyan-light), var(--purple-light));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 0;
+        }
+        
         .token-item:hover {
             transform: translateY(-3px);
+            border-color: var(--primary-cyan);
         }
+        
+        .token-item:hover::before {
+            opacity: 1;
+        }
+        
+        .token-item > * {
+            position: relative;
+            z-index: 1;
+        }
+        
         .token-symbol {
-            font-weight: bold;
-            color: var(--primary);
+            font-weight: 700;
+            color: var(--primary-cyan);
             display: block;
-            font-size: 1.1em;
+            font-size: 1.2em;
+            margin-bottom: 8px;
         }
+        
+        .token-description {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+            margin: 8px 0;
+            line-height: 1.5;
+        }
+        
         .token-address {
-            font-family: monospace;
+            font-family: 'Courier New', monospace;
             font-size: 0.85em;
             color: var(--text-muted);
             word-break: break-all;
-            margin: 8px 0;
+            margin: 12px 0;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            border-left: 3px solid var(--primary-purple);
         }
+        
+        /* COPY BUTTON */
         .copy-btn {
-            background: var(--primary-dark);
-            color: white;
-            border: none;
-            padding: 6px 12px;
+            background: linear-gradient(135deg, var(--bg-element), var(--border-color));
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
             border-radius: 8px;
             cursor: pointer;
-            font-size: 0.8em;
-            transition: all 0.2s;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
         }
+        
         .copy-btn:hover {
-            background: #2a4cff;
+            background: linear-gradient(135deg, var(--primary-purple), var(--primary-cyan));
+            color: var(--bg-dark);
+            border-color: var(--primary-cyan);
         }
+        
+        /* PROGRESS SECTION */
+        .progress-section {
+            margin: 40px 0;
+            background: var(--bg-element);
+            padding: 30px;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            color: var(--text-secondary);
+        }
+        
+        .progress-bar {
+            height: 12px;
+            background: var(--bg-dark);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary-purple), var(--primary-cyan));
+            width: 18%;
+            border-radius: 6px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(255, 255, 255, 0.2),
+                transparent
+            );
+            animation: shimmer 2s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        /* UNISWAP IFRAME CONTAINER */
+        .swap-container {
+            background: var(--bg-element);
+            border-radius: 20px;
+            overflow: hidden;
+            margin: 30px 0;
+            border: 1px solid var(--border-color);
+        }
+        
+        iframe {
+            width: 100%;
+            height: 560px; /* Golden ratio proportion */
+            border: none;
+            display: block;
+        }
+        
+        /* INFO BOXES */
+        .info-box {
+            background: linear-gradient(135deg, var(--cyan-light), var(--purple-light));
+            border-left: 4px solid var(--primary-cyan);
+            padding: 24px;
+            margin: 30px 0;
+            border-radius: 0 16px 16px 0;
+            color: var(--text-primary);
+        }
+        
+        .info-box.warning {
+            border-left-color: #FF6B6B;
+            background: linear-gradient(135deg, rgba(255, 107, 107, 0.1), rgba(255, 193, 7, 0.1));
+        }
+        
+        /* PARTNER LOGOS */
         .partner-logos {
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 30px;
+            gap: 40px;
             flex-wrap: wrap;
-            margin: 25px 0;
+            margin: 40px 0;
+            padding: 30px;
+            background: var(--bg-element);
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
         }
+        
         .partner-logo {
-            height: 40px;
-            filter: grayscale(0.5);
-            opacity: 0.8;
-            transition: all 0.3s;
+            height: 50px;
+            filter: grayscale(1) brightness(1.5);
+            transition: all 0.3s ease;
+            opacity: 0.7;
         }
+        
         .partner-logo:hover {
-            filter: grayscale(0);
+            filter: grayscale(0) brightness(1);
             opacity: 1;
+            transform: scale(1.05);
         }
+        
+        /* FOOTER */
         footer {
             text-align: center;
-            margin-top: 50px;
-            padding-top: 20px;
-            border-top: 1px solid var(--border);
+            margin-top: 100px;
+            padding-top: 60px;
+            border-top: 1px solid var(--border-color);
             color: var(--text-muted);
             font-size: 0.9em;
+            position: relative;
         }
+        
+        footer::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--primary-cyan), transparent);
+        }
+        
+        .social-links {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+        
         .social-links a {
-            color: var(--primary);
-            margin: 0 10px;
+            color: var(--text-secondary);
             text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .social-links a:hover {
+            color: var(--primary-cyan);
+            border-color: var(--primary-cyan);
+            background: var(--cyan-light);
+            transform: translateY(-2px);
+        }
+        
+        /* RESPONSIVE DESIGN */
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 15px;
+            }
+            
+            .card {
+                padding: 30px 20px;
+            }
+            
+            .token-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            h1 {
+                font-size: 2.5em;
+            }
+            
+            h2 {
+                font-size: 2em;
+            }
+        }
+        
+        /* GOLDEN RATIO DECORATIVE ELEMENTS */
+        .golden-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--border-color), transparent);
+            margin: 60px 0;
+            position: relative;
+        }
+        
+        .golden-divider::before {
+            content: 'φ';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--bg-dark);
+            padding: 0 20px;
+            color: var(--primary-purple);
+            font-size: 1.5em;
+            font-weight: bold;
         }
     </style>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-<div class="container">
-    <header>
-        <div class="logo-title">
-            <h1>🚀 InPinity Token Hub</h1>
-        </div>
-        <p>Die dezentrale Handelsplattform auf <strong>Base Network</strong> – für eine wachsende Community.</p>
-        
-        <div class="wallet-section">
-            <button id="connectButton">🔗 Wallet mit Base verbinden</button>
-            <div id="walletAddress" style="display:none;"></div>
-        </div>
-        
-        <div class="info-box">
-            <strong>📈 Deine Chance, früh dabei zu sein!</strong> Der InPinity-Pool startet klein und wächst mit jedem Beitrag. Jeder Kauf erhöht die Liquidität und stärkt das gesamte Ökosystem.
-        </div>
-    </header>
-
-    <div class="main-content">
-        <!-- LINKER TEIL: TOKEN & ERKLÄRUNG -->
-        <section class="card">
-            <h2>📋 Unser Token-Ökosystem auf Base</h2>
-            <p>Alle offiziellen Contract-Adressen für den Handel und die Pool-Bildung:</p>
+    <div class="container">
+        <!-- HEADER WITH GOLDEN RATIO ELEMENTS -->
+        <header>
+            <div class="logo-title">
+                <div class="golden-spiral"></div>
+                <h1>InPinity Token Hub</h1>
+                <p class="tagline">The decentralized trading platform on <strong>Base Network</strong> – built with mathematical harmony and community growth in mind.</p>
+            </div>
             
-            <div class="token-grid" id="tokenList"></div>
+            <div class="wallet-section">
+                <button id="connectButton">🔗 Connect Wallet to Base Network</button>
+                <div id="walletAddress" style="display:none;"></div>
+            </div>
             
             <div class="info-box">
-                <h3>🔍 Wie funktioniert das mit den Pools?</h3>
-                <p>Jeder Pool (z.B. INPI/ETH) ist wie ein gemeinsamer Geldtopf, der den Handel ermöglicht. Wenn du kaufst:</p>
-                <ol>
-                    <li><strong>Du erhältst INPI-Token</strong></li>
-                    <li><strong>Der Pool erhält mehr Liquidität</strong> (wird "tiefer")</li>
-                    <li><strong>Zukünftige Händler zahlen Gebühren</strong>, die an Pool-Besitzer ausgeschüttet werden</li>
-                </ol>
+                <strong>📈 Your opportunity to be part of something growing!</strong> The InPinity pool starts small and expands with every contribution. Each purchase increases liquidity and strengthens the entire ecosystem through mathematical harmony.
             </div>
-            
-            <div class="progress-section">
-                <div class="progress-label">
-                    <span>Aktuelle Pool-Stärke (INPI/ETH)</span>
-                    <span id="progressPercent">15%</span>
-                </div>
-                <div class="progress-bar">
-                    <div class="progress-fill" id="poolProgress"></div>
-                </div>
-                <p style="font-size:0.9em; margin-top:8px; color:var(--text-muted)">
-                    Unser Ziel: 100% für nachhaltige Liquidität. <strong>Jeder Kauf hilft!</strong>
-                </p>
-            </div>
-        </section>
+        </header>
 
-        <!-- RECHTER TEIL: TRADE & PARTNERS -->
-        <section class="card">
-            <h2>🔄 Direkter Kauf über Uniswap</h2>
-            <p>Kaufe <strong>INPI</strong> sicher mit ETH, USDC oder anderen Base-Tokens:</p>
+        <!-- GOLDEN RATIO DIVIDER -->
+        <div class="golden-divider"></div>
+
+        <!-- MAIN CONTENT - GOLDEN RATIO PROPORTIONS -->
+        <div class="main-content">
+            <!-- LEFT COLUMN: TOKENS & EXPLANATION (38.2% emphasis) -->
+            <section class="card">
+                <h2>📋 Our Token Ecosystem on Base</h2>
+                <p>All official contract addresses for trading and pool creation:</p>
+                
+                <div class="token-grid" id="tokenList"></div>
+                
+                <div class="info-box">
+                    <h3>🔍 How Pools Work with Mathematical Harmony</h3>
+                    <p>Each pool (e.g., INPI/ETH) follows golden ratio principles for sustainable growth:</p>
+                    <ol>
+                        <li><strong>You receive INPI tokens</strong> at mathematically optimized rates</li>
+                        <li><strong>The pool gains proportional liquidity</strong> (becomes "deeper")</li>
+                        <li><strong>Future traders pay fees</strong> distributed to pool providers based on their share</li>
+                        <li><strong>Growth follows Fibonacci sequences</strong> for organic expansion</li>
+                    </ol>
+                </div>
+                
+                <div class="progress-section">
+                    <div class="progress-label">
+                        <span>Current Pool Strength (INPI/ETH)</span>
+                        <span id="progressPercent">18%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="poolProgress"></div>
+                    </div>
+                    <p style="margin-top: 16px; color: var(--text-secondary); font-size: 0.95em;">
+                        Our target: 100% sustainable liquidity. <strong>Every purchase moves us toward mathematical equilibrium.</strong>
+                    </p>
+                </div>
+            </section>
+
+            <!-- RIGHT COLUMN: TRADING & PARTNERSHIPS (61.8% emphasis) -->
+            <section class="card">
+                <h2>🔄 Direct Trading via Uniswap</h2>
+                <p>Purchase <strong>INPI</strong> securely with ETH, USDC, or other Base tokens:</p>
+                
+                <!-- UNISWAP IFRAME -->
+                <div class="swap-container">
+                    <iframe
+                        src="https://app.uniswap.org/#/swap?chain=base&outputCurrency=0x15ac8e2c38f0c644123e61011e7113de56038453"
+                        allow="clipboard-write; encrypted-media"
+                        loading="lazy"
+                        title="Uniswap Swap Interface">
+                    </iframe>
+                </div>
+                
+                <div class="info-box warning">
+                    <strong>⚠️ Important Trading Notes:</strong>
+                    <ul style="margin: 12px 0; padding-left: 20px;">
+                        <li>Your wallet must be set to <strong>Base Network (Chain ID: 8453)</strong></li>
+                        <li>Start with small amounts to understand the process</li>
+                        <li>Keep enough ETH for gas fees (approximately $0.01-$0.10)</li>
+                        <li>Verify contract addresses before every transaction</li>
+                    </ul>
+                </div>
+                
+                <h3>🤝 Our Partnerships & Vision for Base</h3>
+                <p>We're building InPinity as a central hub on Base with mathematical precision:</p>
+                
+                <div class="partner-logos">
+                    <img src="https://raw.githubusercontent.com/Uniswap/brand-kit/main/logo/logo.svg" alt="Uniswap Logo" class="partner-logo">
+                    <span style="color: var(--text-muted); font-size: 1.5em;">×</span>
+                    <img src="https://base.org/logo.svg" alt="Base Logo" class="partner-logo">
+                    <span style="color: var(--text-muted); font-size: 1.5em;">×</span>
+                    <span style="font-weight: 700; color: var(--primary-cyan); font-size: 1.2em;">ToshiMart</span>
+                </div>
+                
+                <p><strong>Our Vision:</strong> Deep integration with <strong>ToshiMart on Base</strong> and the <strong>Uniswap Protocol</strong>, creating the most efficient trading experience through mathematical optimization. Each transaction brings us closer to this harmonious ecosystem.</p>
+                
+                <div style="background: linear-gradient(135deg, var(--purple-light), var(--cyan-light)); padding: 24px; border-radius: 16px; margin-top: 30px; border-left: 4px solid var(--primary-purple);">
+                    <strong>🎯 The Path for Pool Providers:</strong>
+                    <p>After purchasing, you can stake your tokens in the pool to:</p>
+                    <ul>
+                        <li>Earn trading fees proportional to your share</li>
+                        <li>Increase pool liquidity with mathematical efficiency</li>
+                        <li>Withdraw your position anytime with your accumulated rewards</li>
+                        <li>Participate in governance as the ecosystem grows</li>
+                    </ul>
+                </div>
+            </section>
+        </div>
+
+        <!-- FOOTER -->
+        <footer>
+            <p>
+                <strong style="background: linear-gradient(135deg, var(--primary-cyan), var(--primary-purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">InPinity on Base</strong> – Growing together through mathematical harmony.
+                <br>
+                Trading interface powered by <a href="https://uniswap.org" target="_blank" style="color: var(--primary-cyan);">Uniswap</a> on the <a href="https://base.org" target="_blank" style="color: var(--primary-cyan);">Base Network</a>.
+            </p>
             
-            <!-- UNISWAP IFRAME -->
-            <iframe
-                src="https://app.uniswap.org/#/swap?chain=base&outputCurrency=0x15ac8e2c38f0c644123e61011e7113de56038453"
-                width="100%"
-                height="520"
-                style="border:0; border-radius:16px; margin:20px 0;"
-                allow="clipboard-write; encrypted-media"
-                loading="lazy"
-                title="Uniswap Swap Interface">
-            </iframe>
-            
-            <div class="info-box warning">
-                <strong>⚠️ Wichtig für den Kauf:</strong>
-                <ul style="margin:8px 0; padding-left:20px;">
-                    <li>Deine Wallet muss auf <strong>Base Network (Chain ID: 8453)</strong> eingestellt sein</li>
-                    <li>Starte mit kleinen Beträgen, um den Prozess kennenzulernen</li>
-                    <li>Behalte genug ETH für Gas-Gebühren (ca. $0.01-$0.10)</li>
-                </ul>
+            <div class="social-links">
+                <a href="https://inpinity.online" target="_blank">
+                    <span>🌐</span> Main Website
+                </a>
+                <a href="https://x.com/inpinity1" target="_blank">
+                    <span>🐦</span> Twitter / X
+                </a>
+                <a href="https://t.me/yourgroup" target="_blank">
+                    <span>📱</span> Telegram
+                </a>
+                <a href="https://github.com/yourrepo" target="_blank">
+                    <span>💻</span> GitHub
+                </a>
             </div>
             
-            <h3>🤝 Unsere Partnerschaften & Vision</h3>
-            <p>Wir arbeiten daran, InPinity zu einem zentralen Hub auf Base zu machen:</p>
+            <p style="font-size: 0.85em; color: var(--text-muted); max-width: 800px; margin: 30px auto; line-height: 1.6;">
+                <strong>Disclaimer:</strong> Cryptocurrency investments carry risks. This interface is for informational purposes only.
+                The InPinity pool is in its early growth phase – starting with smaller amounts helps the community find its mathematical equilibrium.
+                Always conduct your own research and never invest more than you can afford to lose.
+            </p>
             
-            <div class="partner-logos">
-                <img src="https://raw.githubusercontent.com/Uniswap/brand-kit/main/logo/logo.svg" alt="Uniswap Logo" class="partner-logo" style="height:35px;">
-                <span style="color:var(--text-muted)">×</span>
-                <img src="https://base.org/logo.svg" alt="Base Logo" class="partner-logo" style="height:35px;">
-                <span style="color:var(--text-muted)">×</span>
-                <span style="font-weight:bold; color:var(--primary)">ToshiMart</span>
-            </div>
+            <a href="index.html" style="color: var(--primary-cyan); text-decoration: none; font-weight: 600; padding: 12px 24px; border: 1px solid var(--border-color); border-radius: 12px; display: inline-block; margin-top: 20px; transition: all 0.3s ease;">
+                ← Return to InPinity Main Website
+            </a>
             
-            <p><strong>Unser Ziel:</strong> Eine enge Integration mit <strong>ToshiMart auf Base</strong> und dem <strong>Uniswap-Protokoll</strong>, um unseren Nutzern den reibungslosesten Handelsweg zu bieten. Jeder Kauf bringt uns diesem Ziel näher.</p>
-            
-            <div style="background:rgba(16, 185, 129, 0.1); padding:15px; border-radius:10px; margin-top:20px;">
-                <strong>🎯 Der Plan für Pool-Besitzer:</strong>
-                <p>Nach deinem Kauf kannst du deine Token in den Pool einzahlen ("Staken") und dadurch:</p>
-                <ul>
-                    <li>An Handelsgebühren verdienen (prozentualer Anteil)</li>
-                    <li>Die Liquidität des Pools erhöhen</li>
-                    <li>Später jederzeit austreten ("Unstake") und deine Anteile zurückerhalten</li>
-                </ul>
-            </div>
-        </section>
+            <p style="margin-top: 40px; color: var(--text-muted); font-size: 0.8em;">
+                Designed with Golden Ratio (φ) principles • Cyan (#00FFFF) & Purple (#8A2BE2) Harmony
+                <br>
+                φ ≈ 1.6180339887
+            </p>
+        </footer>
     </div>
 
-    <footer>
-        <p>
-            <strong>InPinity auf Base</strong> – Gemeinsam wachsen wir.
-            <br>
-            Handels-Tools bereitgestellt durch <a href="https://uniswap.org" target="_blank">Uniswap</a> auf dem <a href="https://base.org" target="_blank">Base Network</a>.
-        </p>
-        
-        <div class="social-links" style="margin:20px 0;">
-            <a href="https://inpinity.online" target="_blank">🌐 Haupt-Website</a>
-            |
-            <a href="https://x.com/inpinity1" target="_blank">🐦 Twitter / X</a>
-            |
-            <a href="https://t.me/yourgroup" target="_blank">📱 Telegram</a>
-        </div>
-        
-        <p style="font-size:0.8em; color:var(--text-muted); max-width:800px; margin:20px auto;">
-            <strong>Hinweis:</strong> Kryptowährungsinvestitionen sind mit Risiken verbunden. Diese Seite dient nur zu Informationszwecken.
-            Der InPinity-Pool befindet sich in der frühen Wachstumsphase – kleine Beträge zu Beginn helfen der Gemeinschaft am meisten.
-        </p>
-        
-        <a href="index.html" style="color:var(--primary); text-decoration:none; font-weight:bold;">← Zurück zur InPinity-Hauptseite</a>
-    </footer>
-</div>
+    <script>
+        // 1. COMPLETE TOKEN LIST (all your addresses)
+        const TOKENS = [
+            { symbol: "InPinity", address: "0x15ac8e2c38f0c644123e61011e7113de56038453", description: "Our primary governance and utility token" },
+            { symbol: "cbBTC", address: "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf", description: "Bitcoin on Base (cross-chain BTC)" },
+            { symbol: "WBTC", address: "0x0555e30da8f98308edb960aa94c0db47230d2b9c", description: "Wrapped Bitcoin on Base" },
+            { symbol: "USDC", address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", description: "USD Coin native to Base" },
+            { symbol: "ETH", address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", description: "Native Ether on Base Network" },
+            { symbol: "TOSHI", address: "0xac1bd2486aaf3b5c0fc3fd868558b082a531b2b4", description: "Toshi Token ecosystem" }
+        ];
 
-<script>
-// 1. KOMPLETTE TOKEN-LISTE (alle deine Adressen)
-const TOKENS = [
-    { symbol: "InPinity", address: "0x15ac8e2c38f0c644123e61011e7113de56038453", description: "Unser Haupt-Token" },
-    { symbol: "cbBTC", address: "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf", description: "Bitcoin auf Base (cbBTC)" },
-    { symbol: "WBTC", address: "0x0555e30da8f98308edb960aa94c0db47230d2b9c", description: "Wrapped Bitcoin" },
-    { symbol: "USDC", address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", description: "USD Coin auf Base" },
-    { symbol: "ETH", address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", description: "Native Ether auf Base" },
-    { symbol: "TOSHI", address: "0xac1bd2486aaf3b5c0fc3fd868558b082a531b2b4", description: "Toshi Token" }
-];
+        // 2. DISPLAY TOKEN LIST
+        function renderTokenList() {
+            const container = document.getElementById('tokenList');
+            container.innerHTML = '';
+            
+            TOKENS.forEach(token => {
+                const div = document.createElement('div');
+                div.className = 'token-item';
+                div.innerHTML = `
+                    <span class="token-symbol">${token.symbol}</span>
+                    <div class="token-description">${token.description}</div>
+                    <div class="token-address">${token.address}</div>
+                    <button class="copy-btn" onclick="copyToClipboard('${token.address}', this)">
+                        <span>📋</span> Copy Address
+                    </button>
+                `;
+                container.appendChild(div);
+            });
+        }
 
-// 2. TOKEN-LISTE ANZEIGEN
-function renderTokenList() {
-    const container = document.getElementById('tokenList');
-    container.innerHTML = '';
-    
-    TOKENS.forEach(token => {
-        const div = document.createElement('div');
-        div.className = 'token-item';
-        div.innerHTML = `
-            <span class="token-symbol">${token.symbol}</span>
-            <small style="color:var(--text-muted); display:block; margin:4px 0;">${token.description}</small>
-            <div class="token-address">${token.address}</div>
-            <button class="copy-btn" onclick="copyToClipboard('${token.address}', this)">
-                📋 Kopieren
-            </button>
-        `;
-        container.appendChild(div);
-    });
-}
+        // 3. COPY TO CLIPBOARD FUNCTION
+        function copyToClipboard(text, button) {
+            navigator.clipboard.writeText(text).then(() => {
+                const originalHTML = button.innerHTML;
+                button.innerHTML = '<span>✅</span> Copied!';
+                button.style.background = 'linear-gradient(135deg, var(--primary-cyan), var(--primary-purple))';
+                button.style.color = 'var(--bg-dark)';
+                
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                    button.style.background = '';
+                    button.style.color = '';
+                }, 2000);
+            });
+        }
 
-// 3. COPY-TO-CLIPBOARD FUNKTION
-function copyToClipboard(text, button) {
-    navigator.clipboard.writeText(text).then(() => {
-        const original = button.innerHTML;
-        button.innerHTML = '✅ Kopiert!';
-        button.style.background = '#10b981';
-        setTimeout(() => {
-            button.innerHTML = original;
-            button.style.background = '';
-        }, 2000);
-    });
-}
+        // 4. WALLET CONNECTION WITH GOLDEN RATIO FEEDBACK
+        let userAddress = null;
+        const connectButton = document.getElementById('connectButton');
+        const walletAddress = document.getElementById('walletAddress');
 
-// 4. WALLET-CONNECT (vereinfacht)
-let userAddress = null;
-const connectButton = document.getElementById('connectButton');
-const walletAddress = document.getElementById('walletAddress');
-
-connectButton.onclick = async () => {
-    if (!window.ethereum) {
-        alert('Bitte installiere MetaMask oder ein kompatibles Wallet!');
-        window.open('https://metamask.io', '_blank');
-        return;
-    }
-    
-    try {
-        // Netzwerk auf Base prüfen/wechseln
-        const chainId = await ethereum.request({ method: 'eth_chainId' });
-        if (chainId !== '0x2105') { // 0x2105 = Base Mainnet (8453)
+        connectButton.onclick = async () => {
+            if (!window.ethereum) {
+                alert('Please install MetaMask or a compatible Web3 wallet!');
+                window.open('https://metamask.io', '_blank');
+                return;
+            }
+            
             try {
-                await ethereum.request({
-                    method: 'wallet_switchEthereumChain',
-                    params: [{ chainId: '0x2105' }],
+                // Check/switch to Base Network
+                const chainId = await ethereum.request({ method: 'eth_chainId' });
+                if (chainId !== '0x2105') { // 0x2105 = Base Mainnet (8453)
+                    try {
+                        await ethereum.request({
+                            method: 'wallet_switchEthereumChain',
+                            params: [{ chainId: '0x2105' }],
+                        });
+                    } catch (switchError) {
+                        // Add Base network if not present
+                        await ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [{
+                                chainId: '0x2105',
+                                chainName: 'Base Mainnet',
+                                nativeCurrency: { 
+                                    name: 'Ether', 
+                                    symbol: 'ETH', 
+                                    decimals: 18 
+                                },
+                                rpcUrls: ['https://mainnet.base.org'],
+                                blockExplorerUrls: ['https://basescan.org'],
+                                iconUrls: ['https://base.org/favicon.ico']
+                            }]
+                        });
+                    }
+                }
+                
+                // Request accounts
+                const accounts = await ethereum.request({ 
+                    method: 'eth_requestAccounts' 
                 });
-            } catch (switchError) {
-                // Falls Base nicht im Wallet ist, hinzufügen
-                await ethereum.request({
-                    method: 'wallet_addEthereumChain',
-                    params: [{
-                        chainId: '0x2105',
-                        chainName: 'Base Mainnet',
-                        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-                        rpcUrls: ['https://mainnet.base.org'],
-                        blockExplorerUrls: ['https://basescan.org']
-                    }]
+                userAddress = accounts[0];
+                
+                // Update UI with golden ratio animation
+                connectButton.style.display = 'none';
+                walletAddress.style.display = 'block';
+                
+                const shortAddr = userAddress.slice(0,6) + '...' + userAddress.slice(-4);
+                walletAddress.innerHTML = `
+                    <span style="color: var(--primary-cyan);">✅</span> 
+                    Connected: <strong>${shortAddr}</strong> 
+                    <span style="color: var(--text-muted); font-size: 0.9em;">(Base Network)</span>
+                `;
+                
+                // Animate pool growth
+                animatePoolGrowth();
+                
+            } catch (error) {
+                console.error('Wallet connection error:', error);
+                alert('Connection failed: ' + (error.message || 'Unknown error'));
+            }
+        };
+
+        // 5. ANIMATE POOL GROWTH (with golden ratio increments)
+        function animatePoolGrowth() {
+            const progressBar = document.getElementById('poolProgress');
+            const percentLabel = document.getElementById('progressPercent');
+            
+            // Start at 18% (golden ratio inspired)
+            let currentPercent = 18;
+            // Target with golden ratio increment
+            const targetPercent = currentPercent + (Math.random() * 3.82); // 38.2% of 10
+            
+            const interval = setInterval(() => {
+                currentPercent += 0.1;
+                progressBar.style.width = currentPercent.toFixed(1) + '%';
+                percentLabel.textContent = currentPercent.toFixed(1) + '%';
+                
+                if (currentPercent >= targetPercent) {
+                    clearInterval(interval);
+                    // Add golden ratio indicator
+                    percentLabel.innerHTML += ' <span style="color: var(--primary-cyan); font-size: 0.9em;">(φ growth)</span>';
+                }
+            }, 30);
+        }
+
+        // 6. INITIALIZE PAGE
+        document.addEventListener('DOMContentLoaded', () => {
+            renderTokenList();
+            
+            // Auto-connect if already connected
+            if (window.ethereum && window.ethereum.selectedAddress) {
+                userAddress = window.ethereum.selectedAddress;
+                connectButton.style.display = 'none';
+                walletAddress.style.display = 'block';
+                const shortAddr = userAddress.slice(0,6) + '...' + userAddress.slice(-4);
+                walletAddress.innerHTML = `
+                    <span style="color: var(--primary-cyan);">✅</span> 
+                    Connected: <strong>${shortAddr}</strong>
+                `;
+                animatePoolGrowth();
+            }
+            
+            // Listen for network changes
+            if (window.ethereum) {
+                window.ethereum.on('chainChanged', (chainId) => {
+                    if (chainId !== '0x2105') {
+                        alert('Please switch back to Base Network (Chain ID: 8453) for InPinity trading.');
+                    }
+                });
+                
+                // Listen for account changes
+                window.ethereum.on('accountsChanged', (accounts) => {
+                    if (accounts.length === 0) {
+                        // User disconnected wallet
+                        connectButton.style.display = 'block';
+                        walletAddress.style.display = 'none';
+                    } else {
+                        // User switched accounts
+                        userAddress = accounts[0];
+                        const shortAddr = userAddress.slice(0,6) + '...' + userAddress.slice(-4);
+                        walletAddress.innerHTML = `
+                            <span style="color: var(--primary-cyan);">✅</span> 
+                            Connected: <strong>${shortAddr}</strong>
+                        `;
+                    }
                 });
             }
-        }
-        
-        // Konten anfordern
-        const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
-        userAddress = accounts[0];
-        
-        // UI updaten
-        connectButton.style.display = 'none';
-        walletAddress.style.display = 'block';
-        const shortAddr = userAddress.slice(0,6) + '...' + userAddress.slice(-4);
-        walletAddress.innerHTML = `✅ Verbunden: <strong>${shortAddr}</strong> (Base Network)`;
-        
-        // Pool-Fortschritt simulieren (später durch echte Daten ersetzen)
-        simulatePoolGrowth();
-        
-    } catch (error) {
-        console.error('Wallet-Fehler:', error);
-        alert('Verbindung fehlgeschlagen: ' + (error.message || 'Unbekannter Fehler'));
-    }
-};
-
-// 5. POOL-WACHSTUM ANIMIEREN (Simulation für den Anfang)
-function simulatePoolGrowth() {
-    const progressBar = document.getElementById('poolProgress');
-    const percentLabel = document.getElementById('progressPercent');
-    
-    // Zufälliges Wachstum simulieren (später durch echte Pool-Daten ersetzen)
-    const currentPercent = 15; // Startwert
-    const targetPercent = currentPercent + Math.random() * 5;
-    
-    let percent = currentPercent;
-    const interval = setInterval(() => {
-        percent += 0.2;
-        progressBar.style.width = percent + '%';
-        percentLabel.textContent = Math.round(percent) + '%';
-        
-        if (percent >= targetPercent) {
-            clearInterval(interval);
-            percentLabel.innerHTML += ' <small style="color:var(--success)">(+ heute)</small>';
-        }
-    }, 30);
-}
-
-// 6. SEITE INITIALISIEREN
-document.addEventListener('DOMContentLoaded', () => {
-    renderTokenList();
-    
-    // Automatisch verbinden, wenn bereits verbunden
-    if (window.ethereum && window.ethereum.selectedAddress) {
-        userAddress = window.ethereum.selectedAddress;
-        connectButton.style.display = 'none';
-        walletAddress.style.display = 'block';
-        const shortAddr = userAddress.slice(0,6) + '...' + userAddress.slice(-4);
-        walletAddress.innerHTML = `✅ Verbunden: <strong>${shortAddr}</strong>`;
-        simulatePoolGrowth();
-    }
-    
-    // Auf Netzwerk-Wechsel reagieren
-    if (window.ethereum) {
-        window.ethereum.on('chainChanged', (chainId) => {
-            if (chainId !== '0x2105') {
-                alert('Bitte wechsle zurück zum Base Network (Chain ID: 8453) für den InPinity-Handel.');
-            }
+            
+            // Add subtle background animation
+            document.addEventListener('mousemove', (e) => {
+                const x = e.clientX / window.innerWidth;
+                const y = e.clientY / window.innerHeight;
+                
+                document.body.style.backgroundImage = `
+                    radial-gradient(circle at ${x * 100}% ${y * 100}%, 
+                        var(--purple-light) 0%, transparent 50%),
+                    radial-gradient(circle at ${100 - x * 100}% ${100 - y * 100}%, 
+                        var(--cyan-light) 0%, transparent 50%)
+                `;
+            });
         });
-    }
-});
-</script>
+    </script>
 </body>
 </html>
