@@ -371,7 +371,7 @@
         .progress-fill {
             height: 100%;
             background: linear-gradient(90deg, var(--primary-purple), var(--primary-cyan));
-            width: 18%;
+            width: 0%;
             border-radius: 6px;
             position: relative;
             overflow: hidden;
@@ -548,6 +548,38 @@
             font-size: 1.5em;
             font-weight: bold;
         }
+
+        /* Presale box */
+        .presale-box {
+            background: linear-gradient(135deg, var(--purple-light), var(--cyan-light));
+            border: 2px solid var(--primary-cyan);
+            border-radius: 16px;
+            padding: 24px;
+            margin: 30px 0;
+            text-align: center;
+        }
+        .presale-box .live-badge {
+            background: #00aa00;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+        .presale-box .time-info {
+            color: gold;
+            font-weight: bold;
+        }
+        .presale-box .presale-address {
+            background: #111;
+            padding: 8px;
+            border-radius: 8px;
+            font-family: monospace;
+            word-break: break-all;
+            margin: 15px 0;
+            border: 1px solid var(--primary-cyan);
+        }
     </style>
     <!-- Inter Font -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -568,19 +600,39 @@
             </div>
             
             <div class="info-box">
-                <strong>📈 Your opportunity to be part of something growing!</strong> The InPinity pool starts small and expands with every contribution. Each purchase increases liquidity and strengthens the entire ecosystem through mathematical harmony.
+                <strong>📈 Your opportunity to be part of something growing!</strong> The InPinity pool will start after the presale ends and expand with every contribution. Each purchase increases liquidity and strengthens the entire ecosystem through mathematical harmony.
+            </div>
+
+            <!-- Warning about ToshiMart -->
+            <div class="info-box warning">
+                <strong>⚠️ Important Update regarding ToshiMart</strong>
+                <p>We have withdrawn our collaboration with ToshiMart due to <strong>phishing suspicions</strong> on their platform. The old INPI token (address <code>0x15ac8e2c38f0c644123e61011e7113de56038453</code>) and any pools associated with ToshiMart are no longer safe. <strong>Do not interact with ToshiMart or the old token.</strong> All official Inpinity contracts are listed below.</p>
             </div>
         </header>
 
         <!-- GOLDEN RATIO DIVIDER -->
         <div class="golden-divider"></div>
 
+        <!-- Presale Info (prominent) -->
+        <div class="presale-box">
+            <span class="live-badge">🔴 PRESALE LIVE</span>
+            <h2 style="margin-top:10px;">🚀 $INPI Presale</h2>
+            <p>Until <span class="time-info">March 5, 2026, 20:20 UTC</span><br>
+            Rate: <strong>10 INPI per 1 ETH</strong> | Min: 0.01 ETH | Max: 2 ETH</p>
+            <p><strong>Presale Contract Address (new token):</strong></p>
+            <div class="presale-address">0xBdca2af387F13E3d371c1786c333c28E6a3b32e3</div>
+            <button class="copy-btn" onclick="copyToClipboard('0xBdca2af387F13E3d371c1786c333c28E6a3b32e3', this)">
+                <span>📋</span> Copy Presale Address
+            </button>
+            <p style="margin-top:20px;"><strong>After the presale ends</strong>, liquidity will be added to Uniswap V4 and locked until 3033. The pool will then be available for trading.</p>
+        </div>
+
         <!-- MAIN CONTENT - GOLDEN RATIO PROPORTIONS -->
         <div class="main-content">
             <!-- LEFT COLUMN: TOKENS & EXPLANATION (38.2% emphasis) -->
             <section class="card">
                 <h2>📋 Our Token Ecosystem on Base</h2>
-                <p>All official contract addresses for trading and pool creation:</p>
+                <p>All official contract addresses for trading and pool creation (new INPI token only):</p>
                 
                 <div class="token-grid" id="tokenList"></div>
                 
@@ -597,68 +649,63 @@
                 
                 <div class="progress-section">
                     <div class="progress-label">
-                        <span>Current Pool Strength (INPI/ETH)</span>
-                        <span id="progressPercent">18%</span>
+                        <span>Liquidity Phase</span>
+                        <span id="progressPercent">Presale Stage</span>
                     </div>
                     <div class="progress-bar">
-                        <div class="progress-fill" id="poolProgress"></div>
+                        <div class="progress-fill" id="poolProgress" style="width: 100%;"></div>
                     </div>
                     <p style="margin-top: 16px; color: var(--text-secondary); font-size: 0.95em;">
-                        Our target: 100% sustainable liquidity. <strong>Every purchase moves us toward mathematical equilibrium.</strong>
+                        <strong>Liquidity will be added after the presale ends.</strong> Target: 100% sustainable liquidity locked until 3033.
                     </p>
                 </div>
             </section>
 
             <!-- RIGHT COLUMN: TRADING & PARTNERSHIPS (61.8% emphasis) -->
             <section class="card">
-                <h2>📊 Live INPI/ETH Pool & Chart</h2>
-                <p>Track the InPinity pool in real-time on Base Chain. This widget shows the current price, liquidity, and chart history.</p>
+                <h2>📊 INPI Price & Pool (Coming After Presale)</h2>
+                <p>The official INPI/ETH pool will be created on Uniswap V4 immediately after the presale ends. All liquidity will be locked until 3033.</p>
                 
-                <!-- GeckoTerminal Pool Chart iFrame -->
-                <div class="swap-container">
-                    <iframe 
-                        src="https://www.geckoterminal.com/base/pools/0x4b43e95fcb278d2269ff1524c9ed932fdf5301e3a463e862f5acfb75a1ba99a7?embed=1"
-                        allow="clipboard-write; encrypted-media"
-                        loading="lazy"
-                        title="GeckoTerminal INPI/ETH Pool Chart">
-                    </iframe>
+                <!-- Placeholder until pool is live -->
+                <div class="swap-container" style="display: flex; align-items: center; justify-content: center; background: var(--bg-element); height: 200px;">
+                    <p style="color: var(--text-muted); text-align: center;">
+                        <span style="font-size: 3rem;">⏳</span><br>
+                        <strong>Pool will be live after presale</strong><br>
+                        (March 5, 2026)
+                    </p>
                 </div>
                 
                 <div class="info-box">
-                    <strong>ℹ️ How to use this widget:</strong>
+                    <strong>ℹ️ How to participate in the Presale:</strong>
                     <ul style="margin: 12px 0; padding-left: 20px;">
-                        <li>The <strong>chart</strong> shows price history (select timeframe at the top).</li>
-                        <li><strong>Pool statistics</strong> (liquidity, volume) update live below the chart.</li>
-                        <li>Use the fullscreen icon (<strong>↗</strong>) in the top right of the iframe to go to the full GeckoTerminal page.</li>
+                        <li>Connect your wallet to Base Network.</li>
+                        <li>Send ETH to the Presale contract address above.</li>
+                        <li>After the presale ends, claim your INPI tokens using the <code>claim()</code> function.</li>
+                        <li>The INPI/ETH pool will then be created and locked.</li>
                     </ul>
                 </div>
                 
-                <h3>🔗 Pool Address for Direct Support:</h3>
-                <p>To support the pool directly, send INPI tokens to this contract address:</p>
-                <div class="token-address" id="poolAddress">0x4b43e95fcb278d2269ff1524c9ed932fdf5301e3</div>
-                <button class="copy-btn" onclick="copyToClipboard('0x4b43e95fcb278d2269ff1524c9ed932fdf5301e3', this)">
-                    <span>📋</span> Copy Pool Address
-                </button>
+                <h3>🔗 Old Pool (Deprecated – Do Not Use)</h3>
+                <p>The old INPI pool associated with ToshiMart (<code>0x4b43e95f...</code>) is deprecated. Please do not interact with it.</p>
 
                 <div class="golden-divider"></div>
 
-                <h2>🔄 Direct Trading via Uniswap</h2>
-                <p>Purchase <strong>INPI</strong> securely with ETH, USDC, or other Base tokens:</p>
+                <h2>🔄 Direct Trading via Uniswap (After Presale)</h2>
+                <p>Once the presale ends, you can purchase <strong>INPI (new token)</strong> securely with ETH, USDC, or other Base tokens through Uniswap:</p>
                 
-                <!-- UNISWAP IFRAME -->
-                <div class="swap-container">
-                    <iframe
-                        src="https://app.uniswap.org/#/swap?chain=base&outputCurrency=0x15ac8e2c38f0c644123e61011e7113de56038453"
-                        allow="clipboard-write; encrypted-media"
-                        loading="lazy"
-                        title="Uniswap Swap Interface">
-                    </iframe>
+                <!-- UNISWAP IFRAME (disabled for now) -->
+                <div class="swap-container" style="display: flex; align-items: center; justify-content: center; background: var(--bg-element); height: 200px;">
+                    <p style="color: var(--text-muted); text-align: center;">
+                        <span style="font-size: 3rem;">🔜</span><br>
+                        <strong>Uniswap interface will be enabled after presale</strong>
+                    </p>
                 </div>
                 
                 <div class="info-box warning">
                     <strong>⚠️ Important Trading Notes:</strong>
                     <ul style="margin: 12px 0; padding-left: 20px;">
                         <li>Your wallet must be set to <strong>Base Network (Chain ID: 8453)</strong></li>
+                        <li>Use only the <strong>new INPI token address</strong>: <code>0x232FB12582ac10d5fAd97e9ECa22670e8Ba67d0D</code></li>
                         <li>Start with small amounts to understand the process</li>
                         <li>Keep enough ETH for gas fees (approximately $0.01-$0.10)</li>
                         <li>Verify contract addresses before every transaction</li>
@@ -672,15 +719,13 @@
                     <img src="https://raw.githubusercontent.com/Uniswap/brand-kit/main/logo/logo.svg" alt="Uniswap Logo" class="partner-logo">
                     <span style="color: var(--text-muted); font-size: 1.5em;">×</span>
                     <img src="https://base.org/logo.svg" alt="Base Logo" class="partner-logo">
-                    <span style="color: var(--text-muted); font-size: 1.5em;">×</span>
-                    <span style="font-weight: 700; color: var(--primary-cyan); font-size: 1.2em;">ToshiMart</span>
                 </div>
                 
-                <p><strong>Our Vision:</strong> Deep integration with <strong>ToshiMart on Base</strong> and the <strong>Uniswap Protocol</strong>, creating the most efficient trading experience through mathematical optimization. Each transaction brings us closer to this harmonious ecosystem.</p>
+                <p><strong>Our Vision:</strong> Deep integration with the <strong>Uniswap Protocol</strong> on <strong>Base</strong>, creating the most efficient trading experience through mathematical optimization. Each transaction brings us closer to this harmonious ecosystem.</p>
                 
                 <div style="background: linear-gradient(135deg, var(--purple-light), var(--cyan-light)); padding: 24px; border-radius: 16px; margin-top: 30px; border-left: 4px solid var(--primary-purple);">
                     <strong>🎯 The Path for Pool Providers:</strong>
-                    <p>After purchasing, you can stake your tokens in the pool to:</p>
+                    <p>After the presale and pool creation, you can provide liquidity to:</p>
                     <ul>
                         <li>Earn trading fees proportional to your share</li>
                         <li>Increase pool liquidity with mathematical efficiency</li>
@@ -696,7 +741,7 @@
             <p>
                 <strong style="background: linear-gradient(135deg, var(--primary-cyan), var(--primary-purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">InPinity on Base</strong> – Growing together through mathematical harmony.
                 <br>
-                Trading interface powered by <a href="https://uniswap.org" target="_blank" style="color: var(--primary-cyan);">Uniswap</a> on the <a href="https://base.org" target="_blank" style="color: var(--primary-cyan);">Base Network</a>.
+                Presale interface powered by verified smart contracts on <a href="https://basescan.org" target="_blank" style="color: var(--primary-cyan);">BaseScan</a>.
             </p>
             
             <div class="social-links">
@@ -706,7 +751,7 @@
                 <a href="https://x.com/unxpective" target="_blank">
                     <span>🐦</span> Twitter / X
                 </a>
-                <a href="https://t.me/yourgroup" target="_blank">
+                <a href="https://t.me/+1hl5Ou-pGChhYmUy" target="_blank">
                     <span>📱</span> Telegram
                 </a>
                 <a href="https://github.com/xpective" target="_blank">
@@ -716,7 +761,7 @@
             
             <p style="font-size: 0.85em; color: var(--text-muted); max-width: 800px; margin: 30px auto; line-height: 1.6;">
                 <strong>Disclaimer:</strong> Cryptocurrency investments carry risks. This interface is for informational purposes only.
-                The InPinity pool is in its early growth phase – starting with smaller amounts helps the community find its mathematical equilibrium.
+                The new INPI token is in presale phase; liquidity will be added after presale ends and locked until 3033.
                 Always conduct your own research and never invest more than you can afford to lose.
             </p>
             
@@ -733,12 +778,12 @@
     </div>
 
     <script>
-        // 1. COMPLETE TOKEN LIST (all your addresses)
+        // 1. COMPLETE TOKEN LIST (UPDATED: new INPI address)
         const TOKENS = [
-            { symbol: "InPinity", address: "0x15ac8e2c38f0c644123e61011e7113de56038453", description: "Our primary governance and utility token" },
+            { symbol: "INPI (new)", address: "0x232FB12582ac10d5fAd97e9ECa22670e8Ba67d0D", description: "Our primary governance and utility token – new contract" },
             { symbol: "cbBTC", address: "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf", description: "Bitcoin on Base (cross-chain BTC)" },
             { symbol: "WBTC", address: "0x0555e30da8f98308edb960aa94c0db47230d2b9c", description: "Wrapped Bitcoin on Base" },
-            { symbol: "USDC", address: "0xcbc1cf1159b4db5b407684fde0e9e635e9e3726f", description: "USD Coin native to Base" },
+            { symbol: "USDC", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", description: "USD Coin native to Base" },
             { symbol: "ETH", address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", description: "Native Ether on Base Network" },
             { symbol: "TOSHI", address: "0xac1bd2486aaf3b5c0fc3fd868558b082a531b2b4", description: "Toshi Token ecosystem" }
         ];
@@ -837,8 +882,8 @@
                     <span style="color: var(--text-muted); font-size: 0.9em;">(Base Network)</span>
                 `;
                 
-                // Animate pool growth
-                animatePoolGrowth();
+                // Animate pool growth (just for effect)
+                // animatePoolGrowth(); // disabled, since pool not live yet
                 
             } catch (error) {
                 console.error('Wallet connection error:', error);
@@ -846,24 +891,22 @@
             }
         };
 
-        // 5. ANIMATE POOL GROWTH (with golden ratio increments)
+        // 5. ANIMATE POOL GROWTH (optional – currently not used)
         function animatePoolGrowth() {
             const progressBar = document.getElementById('poolProgress');
             const percentLabel = document.getElementById('progressPercent');
             
-            // Start at 18% (golden ratio inspired)
-            let currentPercent = 18;
-            // Target with golden ratio increment
-            const targetPercent = currentPercent + (Math.random() * 3.82); // 38.2% of 10
+            // Start at 0% (presale stage)
+            let currentPercent = 0;
+            const targetPercent = 100;
             
             const interval = setInterval(() => {
-                currentPercent += 0.1;
-                progressBar.style.width = currentPercent.toFixed(1) + '%';
-                percentLabel.textContent = currentPercent.toFixed(1) + '%';
+                currentPercent += 1;
+                progressBar.style.width = currentPercent + '%';
+                percentLabel.textContent = currentPercent + '%';
                 
                 if (currentPercent >= targetPercent) {
                     clearInterval(interval);
-                    // Add golden ratio indicator
                     percentLabel.innerHTML += ' <span style="color: var(--primary-cyan); font-size: 0.9em;">(φ growth)</span>';
                 }
             }, 30);
@@ -883,7 +926,7 @@
                     <span style="color: var(--primary-cyan);">✅</span> 
                     Connected: <strong>${shortAddr}</strong>
                 `;
-                animatePoolGrowth();
+                // animatePoolGrowth(); // disabled
             }
             
             // Listen for network changes
