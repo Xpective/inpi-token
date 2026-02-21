@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InPinity Token Hub | Base Network</title>
-    <!-- Ethers.js for blockchain interaction -->
+    <title>InPinity Token Hub | Trade INPI on Base</title>
+    <!-- Ethers.js for wallet interaction (optional) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
     <!-- Inter Font -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -257,8 +257,8 @@
             background: linear-gradient(135deg, rgba(255, 107, 107, 0.1), rgba(255, 193, 7, 0.1));
         }
         
-        /* PRESALE PANEL */
-        .presale-panel {
+        /* BUY SECTION */
+        .buy-panel {
             background: linear-gradient(135deg, var(--purple-light), var(--cyan-light));
             border: 2px solid var(--primary-cyan);
             border-radius: 16px;
@@ -267,65 +267,45 @@
             text-align: center;
         }
         
-        .presale-panel .live-badge {
-            background: #00aa00;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-weight: bold;
-            display: inline-block;
-            margin-bottom: 15px;
-        }
-        
-        .presale-panel .countdown {
-            font-size: 2rem;
-            font-weight: bold;
+        .buy-panel h2 {
             color: var(--primary-cyan);
-            margin: 15px 0;
+            margin-top: 0;
         }
         
-        .presale-input-group {
-            display: flex;
-            gap: 10px;
-            max-width: 400px;
-            margin: 20px auto;
-            flex-wrap: wrap;
-        }
-        
-        .presale-input-group input {
-            flex: 1;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-            background: var(--bg-element);
-            color: white;
-            font-size: 1rem;
-        }
-        
-        .presale-btn {
+        .buy-button {
             background: var(--primary-cyan);
             color: var(--bg-dark);
             border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
+            padding: 16px 40px;
+            border-radius: 12px;
             font-weight: bold;
+            font-size: 1.2rem;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: inline-block;
+            text-decoration: none;
+            margin: 20px 0;
         }
         
-        .presale-btn:hover:not(:disabled) {
+        .buy-button:hover {
             transform: scale(1.05);
-            box-shadow: 0 0 15px var(--primary-cyan);
+            box-shadow: 0 0 20px var(--primary-cyan);
         }
         
-        .presale-btn:disabled {
-            background: #444;
-            cursor: not-allowed;
+        /* GECKO IFRAME */
+        .chart-container {
+            background: var(--bg-element);
+            border-radius: 20px;
+            overflow: hidden;
+            margin: 30px 0;
+            border: 1px solid var(--border-color);
         }
         
-        .presale-info {
-            margin-top: 20px;
-            color: var(--text-secondary);
+        .chart-container iframe {
+            width: 100%;
+            height: 600px;
+            border: none;
+            display: block;
         }
         
         /* PARTNER LOGOS (text style) */
@@ -357,6 +337,35 @@
         .partner-logo-text.base {
             background: #0052ff;
             color: white;
+        }
+        
+        /* GAME DEV SECTION */
+        .game-dev {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 30px;
+            margin: 40px 0;
+            border: 1px solid var(--border-color);
+            text-align: center;
+        }
+        
+        .game-dev h3 {
+            color: var(--primary-cyan);
+        }
+        
+        .game-dev .progress {
+            background: var(--bg-element);
+            height: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        
+        .game-dev .progress-bar {
+            height: 100%;
+            width: 40%;
+            background: linear-gradient(90deg, var(--primary-purple), var(--primary-cyan));
+            border-radius: 10px;
         }
         
         /* FOOTER */
@@ -412,7 +421,7 @@
             </div>
             
             <div class="info-box">
-                <strong>📈 Your opportunity to be part of something growing!</strong> The InPinity pool will start after the presale ends and expand with every contribution. Each purchase increases liquidity and strengthens the entire ecosystem through mathematical harmony.
+                <strong>📈 The INPI/ETH pool is now live!</strong> Trade $INPI directly on Uniswap V4. Liquidity is locked until 3033. Start swapping below.
             </div>
 
             <div class="info-box warning">
@@ -423,61 +432,59 @@
 
         <div class="golden-divider"></div>
 
-        <!-- PRESALE PANEL with interactive buy & claim -->
-        <div class="presale-panel" id="presalePanel">
-            <span class="live-badge" id="presaleStatusBadge">🔴 PRESALE LIVE</span>
-            <h2>🚀 $INPI Presale</h2>
-            <div class="countdown" id="countdown">Loading...</div>
-            
-            <div id="presaleActiveContent">
-                <p>Rate: <strong>10 INPI per 1 ETH</strong> | Min: 0.01 ETH | Max: 2 ETH</p>
-                <div class="presale-input-group">
-                    <input type="number" id="ethAmount" placeholder="Amount in ETH" step="0.01" min="0.01" max="2">
-                    <button class="presale-btn" id="buyBtn" disabled>🔒 Buy INPI</button>
-                </div>
-            </div>
+        <!-- BUY SECTION (Uniswap Link) -->
+        <div class="buy-panel">
+            <h2>🚀 Buy $INPI with ETH</h2>
+            <p>The INPI/ETH pool is live on Uniswap V4. Click the button below to swap directly on Uniswap.</p>
+            <a href="https://app.uniswap.org/#/swap?chain=base&outputCurrency=0x232FB12582ac10d5fAd97e9ECa22670e8Ba67d0D" target="_blank" class="buy-button">🦄 Buy INPI on Uniswap</a>
+            <p style="font-size:0.9rem; color: var(--text-muted);">Make sure your wallet is set to Base Network.</p>
+        </div>
 
-            <div id="presaleEndedContent" style="display:none;">
-                <p>Presale has ended. You can now claim your INPI tokens.</p>
-                <button class="presale-btn" id="claimBtn" disabled>📥 Claim INPI</button>
-                <p id="userContribution" style="margin-top:10px;"></p>
-            </div>
-
-            <div class="presale-info" id="presaleInfo">
-                <p>Connected wallet contribution: <span id="userContributionAmount">0</span> ETH → <span id="userTokenAmount">0</span> INPI</p>
-            </div>
-
-            <p style="margin-top:20px;"><strong>After the presale ends</strong>, liquidity will be added to Uniswap V4 and locked until 3033. The pool will then be available for trading.</p>
+        <!-- GECKOTERMINAL CHART -->
+        <div class="chart-container">
+            <iframe src="https://www.geckoterminal.com/de/base/pools/0x2da60979434c607e283ad7956bdcd21b83fa756fa156ef45f996e2b34d2e12a8?embed=1" allow="clipboard-write"></iframe>
         </div>
 
         <div class="main-content">
             <!-- LEFT COLUMN: TOKENS -->
             <section class="card">
                 <h2>📋 Our Token Ecosystem on Base</h2>
-                <p>All official contract addresses for trading and pool creation (new INPI token only):</p>
+                <p>All official contract addresses (new INPI token only):</p>
                 <div class="token-grid" id="tokenList"></div>
                 
                 <div class="info-box">
-                    <h3>🔍 How Pools Work with Mathematical Harmony</h3>
-                    <p>Each pool (e.g., INPI/ETH) follows golden ratio principles for sustainable growth:</p>
+                    <h3>🔍 How the Pool Works</h3>
+                    <p>The INPI/ETH pool follows golden ratio principles for sustainable growth:</p>
                     <ol>
-                        <li><strong>You receive INPI tokens</strong> at mathematically optimized rates</li>
-                        <li><strong>The pool gains proportional liquidity</strong> (becomes "deeper")</li>
-                        <li><strong>Future traders pay fees</strong> distributed to pool providers based on their share</li>
-                        <li><strong>Growth follows Fibonacci sequences</strong> for organic expansion</li>
+                        <li><strong>You receive INPI tokens</strong> at market rates via Uniswap V4.</li>
+                        <li><strong>Liquidity is locked</strong> until 23 October 3033 (verified LPLock contract).</li>
+                        <li><strong>Trading fees</strong> are distributed to liquidity providers.</li>
+                        <li><strong>Growth follows mathematical harmony</strong> – organic expansion through community participation.</li>
                     </ol>
                 </div>
             </section>
 
-            <!-- RIGHT COLUMN: TRADING & PARTNERSHIPS -->
+            <!-- RIGHT COLUMN: STAKING & GAME -->
             <section class="card">
-                <h2>📊 INPI Price & Pool (Coming After Presale)</h2>
-                <p>The official INPI/ETH pool will be created on Uniswap V4 immediately after the presale ends. All liquidity will be locked until 3033.</p>
+                <h2>⚡ Stake $INPI & Earn</h2>
+                <p>Stake your INPI tokens and earn passive rewards continuously. Rewards pool: 150M INPI.</p>
+                <div style="text-align:center; margin:30px 0;">
+                    <a href="https://inpinity.online/staking" target="_blank" class="buy-button" style="background: var(--primary-purple); color:white;">🔒 Go to Staking Dashboard</a>
+                </div>
+                <p>Current reward rate: ~0.001 INPI per second (≈ 31k INPI per year). The rate is adjustable by governance to ensure long‑term sustainability.</p>
                 
-                <div style="background: var(--bg-element); padding: 40px; text-align: center; border-radius: 16px; margin: 20px 0;">
-                    <span style="font-size: 3rem;">⏳</span><br>
-                    <strong>Pool will be live after presale</strong><br>
-                    (March 5, 2026)
+                <div class="golden-divider"></div>
+
+                <h2>🎮 Game Development Progress</h2>
+                <div class="game-dev">
+                    <h3>InPinity: The Forge</h3>
+                    <p>Our first game is in active development – a blockchain‑integrated strategy and creativity sandbox.</p>
+                    <div class="progress">
+                        <div class="progress-bar" style="width:40%"></div>
+                    </div>
+                    <p><strong>Phase: </strong>Pre‑alpha (Playable demo targeted for Q4 2026).</p>
+                    <p>Features planned: NFT integration, in‑game token economy, cross‑game asset compatibility.</p>
+                    <p style="color: var(--primary-cyan);">Join our Discord to follow progress!</p>
                 </div>
                 
                 <h3>🤝 Our Partnerships & Vision for Base</h3>
@@ -486,7 +493,7 @@
                     <span style="color: var(--text-muted); font-size: 2rem;">×</span>
                     <div class="partner-logo-text base">Base</div>
                 </div>
-                <p>Deep integration with the <strong>Uniswap Protocol</strong> on <strong>Base</strong>, creating the most efficient trading experience through mathematical optimization.</p>
+                <p>Deep integration with <strong>Uniswap V4</strong> on <strong>Base</strong>, creating the most efficient trading experience through mathematical optimization.</p>
             </section>
         </div>
 
@@ -497,18 +504,18 @@
                 <a href="https://x.com/unxpective" target="_blank">🐦 Twitter / X</a>
                 <a href="https://t.me/+1hl5Ou-pGChhYmUy" target="_blank">📱 Telegram</a>
                 <a href="https://github.com/xpective" target="_blank">💻 GitHub</a>
+                <a href="https://discord.gg/95yj6Eg6" target="_blank">💬 Discord</a>
             </div>
-            <p style="font-size: 0.85em; color: var(--text-muted);">Disclaimer: Cryptocurrency investments carry risks. The new INPI token is in presale phase; liquidity will be added after presale ends and locked until 3033. Always do your own research.</p>
+            <p style="font-size: 0.85em; color: var(--text-muted);">Disclaimer: Cryptocurrency investments carry risks. The INPI token is traded on Uniswap V4. Always do your own research.</p>
             <a href="index.html" style="color: var(--primary-cyan); text-decoration: none; font-weight: 600; padding: 12px 24px; border: 1px solid var(--border-color); border-radius: 12px; display: inline-block; margin-top: 20px;">← Return to Main Website</a>
         </footer>
     </div>
 
     <script>
-        // Configuration
-        const PRESALE_ADDRESS = '0xBdca2af387F13E3d371c1786c333c28E6a3b32e3';
+        // --- Contract addresses ---
         const TOKEN_ADDRESS = '0x232FB12582ac10d5fAd97e9ECa22670e8Ba67d0D';
-        const PRESALE_END = 1741213200; // March 5, 2026 20:20 UTC
 
+        // Token list for display
         const TOKENS = [
             { symbol: "INPI (new)", address: TOKEN_ADDRESS, description: "Our primary governance and utility token – new contract" },
             { symbol: "cbBTC", address: "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf", description: "Bitcoin on Base (cross-chain BTC)" },
@@ -517,41 +524,8 @@
             { symbol: "ETH", address: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", description: "Native Ether on Base Network" }
         ];
 
-        // Minimal Presale ABI
-        const PRESALE_ABI = [
-            "function contribute() external payable",
-            "function claim() external",
-            "function getContribution(address) view returns (uint256)",
-            "function hasClaimed(address) view returns (bool)"
-        ];
-
-        let provider, signer, userAddress;
-        let presaleContract;
-        let contributionWei = 0n;
-        let presaleEnded = false;
-        let countdownInterval;
-
-        // DOM elements
-        const connectBtn = document.getElementById('connectButton');
-        const walletDiv = document.getElementById('walletAddress');
-        const tokenList = document.getElementById('tokenList');
-        const presaleActive = document.getElementById('presaleActiveContent');
-        const presaleEndedDiv = document.getElementById('presaleEndedContent');
-        const countdownEl = document.getElementById('countdown');
-        const buyBtn = document.getElementById('buyBtn');
-        const claimBtn = document.getElementById('claimBtn');
-        const ethInput = document.getElementById('ethAmount');
-        const userContributionSpan = document.getElementById('userContributionAmount');
-        const userTokenSpan = document.getElementById('userTokenAmount');
-        const userContributionDiv = document.getElementById('userContribution');
-        const presaleStatusBadge = document.getElementById('presaleStatusBadge');
-
-        // Helper: format address
-        function formatAddress(addr) {
-            return addr.slice(0,6) + '...' + addr.slice(-4);
-        }
-
         // Render token list
+        const tokenList = document.getElementById('tokenList');
         function renderTokenList() {
             tokenList.innerHTML = TOKENS.map(t => `
                 <div class="token-item">
@@ -578,59 +552,15 @@
             });
         };
 
-        // Countdown update
-        function updateCountdown() {
-            const now = Math.floor(Date.now() / 1000);
-            const diff = PRESALE_END - now;
-            if (diff <= 0) {
-                presaleEnded = true;
-                presaleActive.style.display = 'none';
-                presaleEndedDiv.style.display = 'block';
-                presaleStatusBadge.textContent = '✅ PRESALE ENDED';
-                presaleStatusBadge.style.background = '#ffaa00';
-                countdownEl.textContent = 'Presale ended';
-                if (countdownInterval) clearInterval(countdownInterval);
-                updateClaimButton();
-                return;
-            }
-            const days = Math.floor(diff / 86400);
-            const hours = Math.floor((diff % 86400) / 3600);
-            const mins = Math.floor((diff % 3600) / 60);
-            const secs = diff % 60;
-            countdownEl.textContent = `${days}d ${hours}h ${mins}m ${secs}s`;
+        // Wallet connection (simplified, only for display)
+        let userAddress = null;
+        const connectBtn = document.getElementById('connectButton');
+        const walletDiv = document.getElementById('walletAddress');
+
+        function formatAddress(addr) {
+            return addr.slice(0,6) + '...' + addr.slice(-4);
         }
 
-        // Load user contribution
-        async function loadContribution() {
-            if (!presaleContract || !userAddress) return;
-            try {
-                const contrib = await presaleContract.getContribution(userAddress);
-                contributionWei = contrib;
-                const eth = ethers.formatEther(contrib);
-                userContributionSpan.textContent = eth;
-                const tokens = (contrib * 10n * 10n**18n) / 10n**18n; // 10 INPI per ETH, but rate is 10 INPI/ETH in contract
-                userTokenSpan.textContent = ethers.formatEther(tokens);
-            } catch (e) {
-                console.error('Error loading contribution', e);
-            }
-        }
-
-        // Update claim button enabled
-        async function updateClaimButton() {
-            if (!presaleEnded || !presaleContract || !userAddress) {
-                claimBtn.disabled = true;
-                return;
-            }
-            try {
-                const claimed = await presaleContract.hasClaimed(userAddress);
-                const contrib = await presaleContract.getContribution(userAddress);
-                claimBtn.disabled = claimed || contrib == 0n;
-            } catch (e) {
-                claimBtn.disabled = true;
-            }
-        }
-
-        // Wallet connection
         async function connectWallet() {
             if (!window.ethereum) {
                 alert('Please install MetaMask');
@@ -638,6 +568,7 @@
                 return;
             }
             try {
+                // switch to Base
                 await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x2105' }] });
             } catch (e) {
                 await window.ethereum.request({
@@ -652,83 +583,25 @@
                 });
             }
             try {
-                provider = new ethers.BrowserProvider(window.ethereum);
-                await provider.send('eth_requestAccounts', []);
-                signer = await provider.getSigner();
-                userAddress = await signer.getAddress();
-
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                userAddress = accounts[0];
                 connectBtn.style.display = 'none';
                 walletDiv.style.display = 'block';
                 walletDiv.innerHTML = `<span style="color: var(--primary-cyan);">✅</span> Connected: <strong>${formatAddress(userAddress)}</strong>`;
-
-                presaleContract = new ethers.Contract(PRESALE_ADDRESS, PRESALE_ABI, signer);
-                await loadContribution();
-                buyBtn.disabled = false;
-                updateClaimButton();
-
-                // Listen for events
-                window.ethereum.on('accountsChanged', (acc) => {
-                    if (acc.length === 0) disconnectWallet();
-                });
             } catch (err) {
                 console.error(err);
                 alert('Connection failed');
             }
         }
 
-        function disconnectWallet() {
-            userAddress = null;
-            presaleContract = null;
-            connectBtn.style.display = 'block';
-            walletDiv.style.display = 'none';
-            buyBtn.disabled = true;
-            claimBtn.disabled = true;
+        connectBtn.addEventListener('click', connectWallet);
+
+        // Auto-connect if already connected
+        if (window.ethereum && window.ethereum.selectedAddress) {
+            connectWallet();
         }
 
-        // Buy INPI
-        async function buy() {
-            if (!userAddress || !presaleContract) return alert('Connect wallet first');
-            const eth = ethInput.value;
-            if (!eth || parseFloat(eth) < 0.01 || parseFloat(eth) > 2) return alert('Amount must be between 0.01 and 2 ETH');
-            try {
-                const tx = await presaleContract.contribute({ value: ethers.parseEther(eth) });
-                await tx.wait();
-                alert('Contribution successful!');
-                await loadContribution();
-                ethInput.value = '';
-            } catch (e) {
-                alert('Transaction failed: ' + e.message);
-            }
-        }
-
-        // Claim
-        async function claim() {
-            if (!presaleEnded) return alert('Presale still active');
-            try {
-                const tx = await presaleContract.claim();
-                await tx.wait();
-                alert('Claim successful!');
-                updateClaimButton();
-            } catch (e) {
-                alert('Claim failed: ' + e.message);
-            }
-        }
-
-        // Initialization
-        document.addEventListener('DOMContentLoaded', () => {
-            renderTokenList();
-            updateCountdown();
-            countdownInterval = setInterval(updateCountdown, 1000);
-
-            buyBtn.addEventListener('click', buy);
-            claimBtn.addEventListener('click', claim);
-            connectBtn.addEventListener('click', connectWallet);
-
-            // Auto-connect if already connected
-            if (window.ethereum && window.ethereum.selectedAddress) {
-                connectWallet();
-            }
-        });
+        renderTokenList();
     </script>
 </body>
 </html>
